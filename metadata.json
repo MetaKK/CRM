@@ -1,0 +1,6 @@
+{
+  "name": "安奇汽车顾问-H5工作台",
+  "description": "基于全球车企双主轴(客户与车辆)架构重构的纯粹原生级H5顾问工作台，涵盖SLA响应作战台、客户360与多渠道归因、VIN现车与在途雷达、多版本报价生成器、试驾与交车协同及小万AI助手。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

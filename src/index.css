@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-slate-50: #f6f9fd;
+  --color-slate-100: #eef3f9;
+  --color-slate-200: #dce6f1;
+  --color-slate-300: #c3d0df;
+  --color-slate-400: #8a9ab8;
+  --color-slate-500: #7a8aaa;
+  --color-slate-600: #5a6a88;
+  --color-slate-700: #3a4a68;
+  --color-slate-800: #2a3a58;
+  --color-slate-900: #1a2438;
+  --color-blue-50: #eef6ff;
+  --color-blue-100: #dcecff;
+  --color-blue-200: #c6def8;
+  --color-blue-500: #2b7bda;
+  --color-blue-600: #1a6fd4;
+  --color-blue-700: #155caf;
+  --color-indigo-50: #eef6ff;
+  --color-indigo-100: #dcecff;
+  --color-indigo-200: #c6def8;
+  --color-indigo-500: #2b7bda;
+  --color-indigo-600: #1a6fd4;
+  --color-indigo-700: #155caf;
+  --color-gray-50: #f8fbff;
+  --color-gray-100: #eef3f9;
+  --color-gray-200: #dce6f1;
+  --color-gray-300: #c3d0df;
+  --color-gray-400: #8a9ab8;
+  --color-gray-500: #7a8aaa;
+  --color-gray-600: #5a6a88;
+  --color-gray-700: #3a4a68;
+  --color-gray-800: #2a3a58;
+  --color-gray-900: #1a2438;
+}
+
+:root {
+  --crm-primary: #1a6fd4;
+  --crm-primary-hover: #155caf;
+  --crm-ink: #1a2438;
+  --crm-body: #3a4a68;
+  --crm-secondary: #5a6a88;
+  --crm-muted: #8a9ab8;
+  --crm-line: #eaf0f7;
+  --crm-card-shadow: 0 2px 20px rgba(30, 70, 160, 0.07);
+  --crm-canvas: linear-gradient(175deg, #c8d8ef 0%, #d8e6f5 20%, #e4eef8 50%, #eef4fb 100%);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100%;
+  }
+
+  body {
+    color: var(--crm-ink);
+    background: #e7eff9;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    overscroll-behavior-y: none;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button:focus {
+    outline: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--crm-primary);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+.crm-shell {
+  background: var(--crm-canvas);
+  box-shadow: 0 10px 36px rgba(30, 70, 160, 0.16);
+}
+
+.crm-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 0 12px 96px;
+  background: transparent;
+}
+
+.crm-card {
+  overflow: hidden;
+  border: 1px solid rgba(234, 240, 247, 0.9);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: var(--crm-card-shadow);
+}
+
+.crm-card-subtle {
+  border: 1px solid var(--crm-line);
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.crm-icon-button {
+  color: var(--crm-body);
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.crm-icon-button:hover {
+  color: var(--crm-primary);
+}
+
+.crm-icon-button:active {
+  transform: scale(0.9);
+}
+
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.mb-safe {
+  margin-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.apple-glass {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.apple-glass-dark {
+  background: rgba(26, 36, 56, 0.86);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.stripe-card-shadow,
+.crm-elevated {
+  box-shadow: var(--crm-card-shadow);
+}
+
+.stripe-card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.stripe-card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 18px rgba(30, 70, 160, 0.1);
+}
