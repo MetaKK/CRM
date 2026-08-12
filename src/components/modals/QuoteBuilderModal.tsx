@@ -19,6 +19,8 @@ interface QuoteBuilderModalProps {
   client: ClientRecord | null;
   advisorName: string;
   storeName: string;
+  onGenerateQuote?: () => void;
+  onShareQuote?: () => void;
 }
 
 export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
@@ -27,6 +29,8 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
   client,
   advisorName,
   storeName,
+  onGenerateQuote,
+  onShareQuote,
 }) => {
   if (!isOpen || !client) return null;
 
@@ -51,6 +55,7 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
   const [copied, setCopied] = useState(false);
 
   const handleCopyQuote = () => {
+    onGenerateQuote?.();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -207,6 +212,7 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
             href={`https://wa.me/${client.countryCode}${client.phone}`}
             target="_blank"
             rel="noreferrer"
+            onClick={() => onShareQuote?.()}
             className="flex-1 py-3 bg-[#1a6fd4] hover:bg-[#155caf] text-white font-extrabold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-sm"
           >
             <Send className="w-4 h-4 stroke-[2]" />

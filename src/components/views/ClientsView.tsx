@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Search, Plus, FileText, Send, AlertTriangle } from 'lucide-react';
 import { mockClients } from '../../data/mockData';
 import { ClientRecord } from '../../types';
@@ -6,14 +6,21 @@ import { ClientRecord } from '../../types';
 interface ClientsViewProps {
   onSelectClient: (client: ClientRecord) => void;
   onOpenQuoteBuilder: (client: ClientRecord) => void;
+  onClientCreated?: () => void;
+  onSearchStarted?: () => void;
+  onFilterChanged?: () => void;
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
   onSelectClient,
   onOpenQuoteBuilder,
+  onClientCreated,
+  onSearchStarted,
+  onFilterChanged,
 }) => {
   const [activeTab, setActiveTab] = useState('全部');
   const [searchTerm, setSearchTerm] = useState('');
+  const hasTrackedSearch = useRef(false);
 
   const tabs = ['全部', '需求确认', '待试驾', '方案报价', '已订车'];
 
@@ -35,7 +42,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <p className="text-[11px] text-slate-500 mt-0.5">全渠道线索 · 客户 360 视图</p>
         </div>
         <button
-          onClick={() => alert('新增客户录入：已自动匹配手机号查重')}
+          onClick={() => {
+            onClientCreated?.();
+            alert('新增客户录入：已自动匹配手机号查重');
+          }}
           className="px-3.5 py-2 bg-[#1a6fd4] hover:bg-[#155caf] text-white font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer active:scale-95 transition-all shrink-0 whitespace-nowrap"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -49,7 +59,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         <input
           type="text"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            if (e.target.value.trim() && !hasTrackedSearch.current) {
+              hasTrackedSearch.current = true;
+              onSearchStarted?.();
+            }
+          }}
           placeholder="搜索姓名、车型或手机号..."
           className="w-full text-xs pl-9 pr-3 py-2.5 bg-white rounded-xl outline-none border border-[#dce6f1] focus:border-[#1a6fd4]/40 focus:ring-2 focus:ring-[#1a6fd4]/10 transition-all text-slate-900 placeholder-slate-400 font-medium"
         />
@@ -59,7 +75,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         {tabs.map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              onFilterChanged?.();
+            }}
             className={`relative pb-2.5 text-xs font-medium shrink-0 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === tab
                 ? 'text-[#1a6fd4] font-bold'

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AdvisorProfile,
@@ -11,6 +11,8 @@ import {
   WorkbenchPriority,
   WorkbenchScheduleItem,
   WorkbenchSectionId,
+  ProductAnalyticsEvent,
+  RoleAccount,
 } from './types';
 import {
   defaultQuickToolIdsByRole,
@@ -26,6 +28,12 @@ import {
   readWorkbenchPreferences,
   saveWorkbenchPreferences,
 } from './lib/workbenchPreferences';
+import {
+  getAnalyticsActorType,
+  getAnalyticsRoleType,
+  resetLocalAnalyticsEvents,
+  trackAnalyticsEvent,
+} from './lib/productAnalytics';
 
 // Core UI Components
 import { MobileFrame } from './components/MobileFrame';
@@ -50,9 +58,36 @@ import { WorkbenchView } from './components/views/WorkbenchView';
 import { ClientsView } from './components/views/ClientsView';
 import { TestDriveView } from './components/views/TestDriveView';
 import { OrdersView } from './components/views/OrdersView';
+import { AnalyticsView } from './components/views/AnalyticsView';
 
 const getAvailableTools = (accountId: string) =>
   mockAppTools.filter((tool) => !tool.roleIds?.length || tool.roleIds.includes(accountId));
+
+const analyticsModuleByTab: Record<TabType, ProductAnalyticsEvent['module']> = {
+  xiaowan: 'xiaowan',
+  workbench: 'workbench',
+  analytics: 'analytics',
+  clients: 'client_360',
+  testdrive: 'test_drive',
+  orders: 'order_delivery',
+  team: 'workbench',
+  approvals: 'order_delivery',
+  inventory: 'work_essential',
+  service: 'order_delivery',
+  region: 'workbench',
+};
+
+const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalyticsEvent['properties']>['target']>> = {
+  xiaowan: 'xiaowan',
+  workbench: 'workbench',
+  analytics: 'analytics',
+  clients: 'clients',
+  testdrive: 'testdrive',
+  orders: 'orders',
+  inventory: 'work_essential',
+};
+
+type AnalyticsPayload = Pick<ProductAnalyticsEvent, 'module' | 'action' | 'result' | 'properties'>;
 
 export default function App() {
   // Main Account & Tab State
@@ -100,6 +135,9 @@ export default function App() {
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeMetricDetail, setActiveMetricDetail] = useState<MetricData['id'] | null>(null);
+  const [analyticsRevision, setAnalyticsRevision] = useState(0);
+  const recordedScreenRef = useRef<string | null>(null);
+  const hasRecordedAppOpenRef = useRef(false);
 
   // Customer 360 & Quote Modals
   const [selectedClient360, setSelectedClient360] = useState<ClientRecord | null>(null);
@@ -107,6 +145,15 @@ export default function App() {
 
   // Toast alert
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const recordAnalytics = useCallback((account: RoleAccount, payload: AnalyticsPayload) => {
+    trackAnalyticsEvent({
+      actorType: getAnalyticsActorType(account),
+      roleType: getAnalyticsRoleType(account.id),
+      ...payload,
+    });
+    setAnalyticsRevision((revision) => revision + 1);
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -123,6 +170,24 @@ export default function App() {
       ),
     );
   }, [currentAccount.id]);
+
+  useEffect(() => {
+    if (hasRecordedAppOpenRef.current) return;
+    hasRecordedAppOpenRef.current = true;
+    recordAnalytics(currentAccount, { module: 'app', action: 'app_opened', result: 'success' });
+  }, [currentAccount, recordAnalytics]);
+
+  useEffect(() => {
+    const screenKey = `${currentAccount.id}:${activeTab}`;
+    if (recordedScreenRef.current === screenKey) return;
+    recordedScreenRef.current = screenKey;
+    recordAnalytics(currentAccount, {
+      module: analyticsModuleByTab[activeTab],
+      action: 'page_viewed',
+      result: 'success',
+      properties: analyticsTargetByTab[activeTab] ? { target: analyticsTargetByTab[activeTab] } : undefined,
+    });
+  }, [activeTab, currentAccount, recordAnalytics]);
 
   const updateWorkbenchPreferences = (nextPreferences: WorkbenchPreferences) => {
     setWorkbenchPreferences(nextPreferences);
@@ -141,16 +206,29 @@ export default function App() {
       : [...workbenchPreferences.quickToolIds, toolId];
 
     updateWorkbenchPreferences({ ...workbenchPreferences, quickToolIds });
+    recordAnalytics(currentAccount, {
+      module: 'work_essential',
+      action: 'tool_configured',
+      result: 'completed',
+      properties: { target: 'work_essential' },
+    });
     const tool = availableTools.find((item) => item.id === toolId);
     showToast(isPinned ? `已从工作必备移除：${tool?.quickLabel || '应用'}` : `已添加到工作必备：${tool?.quickLabel || '应用'}`);
   };
 
   const handleSectionOrderChange = (sectionOrder: WorkbenchSectionId[]) => {
     updateWorkbenchPreferences({ ...workbenchPreferences, sectionOrder });
+    recordAnalytics(currentAccount, { module: 'workbench', action: 'layout_reordered', result: 'completed' });
   };
 
   const handleAutoPromoteEnabledChange = (autoPromoteEnabled: boolean) => {
     updateWorkbenchPreferences({ ...workbenchPreferences, autoPromoteEnabled });
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'auto_transfer_toggled',
+      result: autoPromoteEnabled ? 'enabled' : 'disabled',
+      properties: { method: 'automatic' },
+    });
     showToast(autoPromoteEnabled ? '已开启自动转入' : '已关闭自动转入');
   };
 
@@ -178,16 +256,30 @@ export default function App() {
       if (existing.some((item) => item.sourceScheduleId === priority.sourceScheduleId)) return previous;
       return { ...previous, [currentAccount.id]: [priority, ...existing] };
     });
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'auto_transfer_executed',
+      result: 'completed',
+      properties: { method: source, source },
+    });
     showToast(source === 'ai' ? `AI 已将「${item.title}」转为最紧急事项` : `已将「${item.title}」设为最紧急事项`);
   };
 
   const openAppCenter = (toolId: string | null = null) => {
+    recordAnalytics(currentAccount, { module: 'app_center', action: 'app_center_opened', result: 'success' });
     setAppCenterInitialToolId(toolId);
     setIsAppCenterOpen(true);
   };
 
-  const handleLaunchTool = (tool: AppTool) => {
+  const handleLaunchTool = (tool: AppTool, source: 'work_essential' | 'app_center' = 'work_essential') => {
+    recordAnalytics(currentAccount, {
+      module: source,
+      action: 'tool_launched',
+      result: 'completed',
+      properties: { source },
+    });
     if (tool.action === 'quote') {
+      recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', result: 'started', properties: { source } });
       setQuoteBuilderClient(mockClients[0]);
       return;
     }
@@ -198,11 +290,28 @@ export default function App() {
     openAppCenter(tool.id);
   };
 
+  const openClient360 = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
+    recordAnalytics(currentAccount, { module: 'client_360', action: 'client_opened', result: 'completed', properties: { source } });
+    setSelectedClient360(client);
+  };
+
+  const openQuoteBuilder = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
+    recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', result: 'started', properties: { source } });
+    setQuoteBuilderClient(client);
+  };
+
   // Switch Role Account
   const handleSelectAccount = (accId: string) => {
+    const nextAccount = mockRoleAccounts.find((account) => account.id === accId) || mockRoleAccounts[0];
+    recordAnalytics(currentAccount, {
+      module: 'app',
+      action: 'role_switched',
+      result: 'completed',
+      properties: { target: nextAccount.id === 'operations' ? 'analytics' : 'workbench' },
+    });
     setActiveAccountId(accId);
     setIsAccountDrawerOpen(false);
-    const newAcc = mockRoleAccounts.find((a) => a.id === accId) || mockRoleAccounts[0];
+    const newAcc = nextAccount;
 
     setWorkbenchPreferences(
       readWorkbenchPreferences(
@@ -243,6 +352,12 @@ export default function App() {
     showToast(`已成功切换至：${store.name}`);
   };
 
+  const resetAnalytics = () => {
+    resetLocalAnalyticsEvents();
+    setAnalyticsRevision((revision) => revision + 1);
+    showToast('已清除本机真实埋点，演示基线保留');
+  };
+
   // Logout
   const handleLogout = () => {
     if (confirm('确定要安全退出当前账号吗？')) {
@@ -276,7 +391,10 @@ export default function App() {
             onOpenCustomerService={() => setIsCustomerServiceOpen(true)}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onOpenNotifications={() => setIsNotificationsOpen(true)}
-            onQuickAction={() => showToast('已触发：新建客户跟进 / 快速排程试驾')}
+            onQuickAction={() => {
+              recordAnalytics(currentAccount, { module: 'app', action: 'quick_action_started', result: 'started' });
+              showToast('已触发：新建客户跟进 / 快速排程试驾');
+            }}
           />
         )}
 
@@ -293,8 +411,8 @@ export default function App() {
               <WorkbenchView
                 onNavigateToTab={(tab) => setActiveTab(tab)}
                 onOpenAppCenter={() => openAppCenter()}
-                onSelectClient={(client) => setSelectedClient360(client)}
-                onOpenQuoteBuilder={(client) => setQuoteBuilderClient(client)}
+                onSelectClient={(client) => openClient360(client, 'workbench')}
+                onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
                 currentAccount={currentAccount}
                 priorities={workbenchPriorities}
                 tools={availableTools}
@@ -305,6 +423,8 @@ export default function App() {
                 onPromoteSchedule={handlePromoteSchedule}
                 autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
                 onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
+                onPriorityOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'priority_opened', result: 'completed' })}
+                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', result: 'completed' })}
               />
             </motion.div>
           ) : activeTab === 'clients' ? (
@@ -316,8 +436,11 @@ export default function App() {
               transition={{ duration: 0.15 }}
             >
               <ClientsView
-                onSelectClient={(client) => setSelectedClient360(client)}
-                onOpenQuoteBuilder={(client) => setQuoteBuilderClient(client)}
+                onSelectClient={(client) => openClient360(client, 'clients')}
+                onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'clients')}
+                onClientCreated={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_created', result: 'started' })}
+                onSearchStarted={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_search_started', result: 'started' })}
+                onFilterChanged={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_filter_changed', result: 'completed' })}
               />
             </motion.div>
           ) : activeTab === 'testdrive' ? (
@@ -328,7 +451,10 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <TestDriveView />
+              <TestDriveView
+                onBookTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_booked', result: 'started' })}
+                onReleaseTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_released', result: 'completed' })}
+              />
             </motion.div>
           ) : activeTab === 'orders' || activeTab === 'approvals' || activeTab === 'inventory' || activeTab === 'service' || activeTab === 'region' ? (
             <motion.div
@@ -338,7 +464,11 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <OrdersView />
+              <OrdersView
+                onOrderCreated={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'order_created', result: 'started' })}
+                onContractOpened={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'contract_opened', result: 'completed' })}
+                onDeliveryStarted={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'delivery_started', result: 'started' })}
+              />
             </motion.div>
           ) : activeTab === 'xiaowan' && currentAccount.hasXiaowan ? (
             <motion.div
@@ -348,7 +478,26 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <XiaowanView advisorName={currentAccount.name} storeName={currentAccount.store} />
+              <XiaowanView
+                advisorName={currentAccount.name}
+                storeName={currentAccount.store}
+                onAnalyticsAction={(action) => recordAnalytics(currentAccount, { module: 'xiaowan', action, result: 'completed' })}
+              />
+            </motion.div>
+          ) : activeTab === 'analytics' && currentAccount.id === 'operations' ? (
+            <motion.div
+              key="analytics"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+            >
+              <AnalyticsView
+                revision={analyticsRevision}
+                onPeriodChanged={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'period_changed', result: 'completed' })}
+                onSourceExplained={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'source_explained', result: 'completed' })}
+                onResetLocalData={resetAnalytics}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -361,8 +510,8 @@ export default function App() {
               <WorkbenchView
                 onNavigateToTab={(tab) => setActiveTab(tab)}
                 onOpenAppCenter={() => openAppCenter()}
-                onSelectClient={(client) => setSelectedClient360(client)}
-                onOpenQuoteBuilder={(client) => setQuoteBuilderClient(client)}
+                onSelectClient={(client) => openClient360(client, 'workbench')}
+                onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
                 currentAccount={currentAccount}
                 priorities={workbenchPriorities}
                 tools={availableTools}
@@ -373,6 +522,8 @@ export default function App() {
                 onPromoteSchedule={handlePromoteSchedule}
                 autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
                 onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
+                onPriorityOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'priority_opened', result: 'completed' })}
+                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', result: 'completed' })}
               />
             </motion.div>
           )}
@@ -394,7 +545,7 @@ export default function App() {
         activeAccountId={activeAccountId}
         onSelectAccount={handleSelectAccount}
         onOpenStoreSwitcher={() => setIsStoreSwitcherOpen(true)}
-        onOpenAppCenter={() => setIsAppCenterOpen(true)}
+        onOpenAppCenter={() => openAppCenter()}
         onOpenCustomerService={() => setIsCustomerServiceOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
@@ -409,7 +560,7 @@ export default function App() {
         client={selectedClient360}
         onOpenQuoteBuilder={(client) => {
           setSelectedClient360(null);
-          setQuoteBuilderClient(client);
+          openQuoteBuilder(client, 'clients');
         }}
       />
 
@@ -419,6 +570,8 @@ export default function App() {
         client={quoteBuilderClient}
         advisorName={profile.name}
         storeName={profile.store}
+        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', result: 'completed' })}
+        onShareQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_shared', result: 'completed' })}
       />
 
       <StoreSwitcherModal
@@ -443,7 +596,9 @@ export default function App() {
         pinnedToolIds={workbenchPreferences.quickToolIds}
         initialToolId={appCenterInitialToolId}
         onTogglePinnedTool={handleQuickToolToggle}
-        onLaunchTool={handleLaunchTool}
+        onLaunchTool={(tool) => handleLaunchTool(tool, 'app_center')}
+        onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_launched', result: 'started', properties: { source: 'app_center' } })}
+        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', result: 'completed', properties: { source: 'app_center' } })}
       />
 
       <CustomerServiceModal

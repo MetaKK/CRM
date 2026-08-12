@@ -13,6 +13,7 @@ import {
   RefreshCw,
   DollarSign,
   ShieldCheck,
+  ChartNoAxesCombined,
   LucideIcon,
 } from 'lucide-react';
 import { TabType, RoleAccount } from '../types';
@@ -37,6 +38,7 @@ const iconMap: Record<string, LucideIcon> = {
   RefreshCw,
   DollarSign,
   ShieldCheck,
+  ChartNoAxesCombined,
 };
 
 export const TabBar: React.FC<TabBarProps> = ({ activeTab, onSelectTab, currentAccount }) => {

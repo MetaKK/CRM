@@ -2,7 +2,12 @@ import React from 'react';
 import { Car, Clock, Plus, Phone, MapPin } from 'lucide-react';
 import { mockTestDrives } from '../../data/mockData';
 
-export const TestDriveView: React.FC = () => {
+interface TestDriveViewProps {
+  onBookTestDrive?: () => void;
+  onReleaseTestDrive?: () => void;
+}
+
+export const TestDriveView: React.FC<TestDriveViewProps> = ({ onBookTestDrive, onReleaseTestDrive }) => {
   return (
     <div className="crm-page space-y-3.5 select-none">
       {/* Header */}
@@ -12,7 +17,10 @@ export const TestDriveView: React.FC = () => {
           <p className="text-[11px] text-slate-500 mt-0.5">驾照核验 · 免责协议 · 线路规划</p>
         </div>
         <button
-          onClick={() => alert('已打开发起预约试驾登记卡片')}
+          onClick={() => {
+            onBookTestDrive?.();
+            alert('已打开发起预约试驾登记卡片');
+          }}
           className="px-3.5 py-2 bg-[#1a6fd4] hover:bg-[#155caf] text-white font-semibold text-xs rounded-lg flex items-center gap-1 cursor-pointer active:scale-95 transition-all shrink-0 whitespace-nowrap"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -71,7 +79,10 @@ export const TestDriveView: React.FC = () => {
                   <Phone className="w-3.5 h-3.5 stroke-[2]" />
                 </a>
                 <button
-                  onClick={() => alert(`办理接车：电子签署驾照免责协议`)}
+                  onClick={() => {
+                    onReleaseTestDrive?.();
+                    alert('办理接车：电子签署驾照免责协议');
+                  }}
                   className="px-3.5 py-1.5 bg-[#1a6fd4] hover:bg-[#155caf] text-white font-semibold text-xs rounded-lg cursor-pointer active:scale-95 transition-all whitespace-nowrap"
                 >
                   签署并发车

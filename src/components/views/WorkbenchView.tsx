@@ -38,6 +38,8 @@ interface WorkbenchViewProps {
   onSectionOrderChange: (sectionOrder: WorkbenchSectionId[]) => void;
   onPromoteSchedule: (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => void;
   onAutoPromoteEnabledChange: (enabled: boolean) => void;
+  onPriorityOpened?: () => void;
+  onScheduleOpened?: () => void;
   currentAccount: RoleAccount;
   priorities: WorkbenchPriority[];
   tools: AppTool[];
@@ -127,6 +129,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   onSectionOrderChange,
   onPromoteSchedule,
   onAutoPromoteEnabledChange,
+  onPriorityOpened,
+  onScheduleOpened,
   currentAccount,
   priorities,
   tools,
@@ -156,6 +160,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const getClient = (clientId?: string) => mockClients.find((client) => client.id === clientId);
 
   const handlePriorityAction = (priority: WorkbenchPriority) => {
+    onPriorityOpened?.();
     const client = getClient(priority.clientId);
     if (priority.interaction === 'quote' && client) {
       onOpenQuoteBuilder(client);
@@ -169,6 +174,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   };
 
   const handleScheduleAction = (item: WorkbenchScheduleItem) => {
+    onScheduleOpened?.();
     const client = getClient(item.clientId);
     if (client && item.targetTab === 'clients') {
       onSelectClient(client);

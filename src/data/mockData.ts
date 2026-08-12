@@ -290,6 +290,37 @@ export const mockRoleAccounts: RoleAccount[] = [
     workbenchTitle: '交付专家工作台',
     workbenchSubtitle: '今日待交付 6台 · 仪式感准备就绪',
   },
+  {
+    id: 'operations',
+    shortName: '运营',
+    avatarText: '运营',
+    iconBg: 'bg-gradient-to-r from-[#1a6fd4] to-[#365fb6]',
+    iconText: 'text-white font-bold',
+    avatarBg: 'bg-gradient-to-tr from-[#1a6fd4] to-[#365fb6]',
+    name: '产品运营',
+    phone: '00000000000',
+    verified: true,
+    signature: '以用户行为驱动产品迭代',
+    roleTitle: '产品运营负责人',
+    store: '产品增长与运营中心',
+    region: '产品体验',
+    hasXiaowan: false,
+    tabs: [
+      { id: 'analytics', label: '驾驶舱', iconName: 'ChartNoAxesCombined' },
+    ],
+    workbenchMetrics: [],
+    workbenchPriorities: [],
+    workbenchSchedule: [],
+    workbenchInsight: {
+      eyebrow: '产品运营',
+      title: '体验数据持续汇总中',
+      description: '请进入产品运营驾驶舱查看匿名行为数据。',
+      actionLabel: '查看驾驶舱',
+      targetTab: 'analytics',
+    },
+    workbenchTitle: '产品运营驾驶舱',
+    workbenchSubtitle: '演示基线 + 本机实时行为',
+  },
 ];
 
 export const initialAdvisorProfile: AdvisorProfile = {
@@ -787,6 +818,7 @@ export const defaultQuickToolIdsByRole: Record<string, string[]> = {
   chong: ['service-order', 'parts-radar'],
   feishi: ['store-ranking', 'allocation'],
   liuyang: ['delivery-order', 'pdi'],
+  operations: [],
 };
 
 export const mockNotifications: NotificationItem[] = [

@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface XiaowanViewProps {
   advisorName: string;
   storeName: string;
+  onAnalyticsAction?: (action: 'quick_prompt_sent' | 'message_sent' | 'voice_started') => void;
 }
 
 interface Message {
@@ -34,7 +35,7 @@ interface Message {
   category?: 'competitor' | 'finance' | 'objection' | 'general';
 }
 
-export const XiaowanView: React.FC<XiaowanViewProps> = ({ advisorName, storeName }) => {
+export const XiaowanView: React.FC<XiaowanViewProps> = ({ advisorName, storeName, onAnalyticsAction }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -114,6 +115,7 @@ export const XiaowanView: React.FC<XiaowanViewProps> = ({ advisorName, storeName
       setLiveTranscript('');
       recognitionRef.current.start();
       setIsListening(true);
+      onAnalyticsAction?.('voice_started');
     }
   };
 
@@ -154,6 +156,7 @@ export const XiaowanView: React.FC<XiaowanViewProps> = ({ advisorName, storeName
   const handleSend = async (customPrompt?: string) => {
     const query = customPrompt || input;
     if (!query.trim() || loading) return;
+    onAnalyticsAction?.(customPrompt ? 'quick_prompt_sent' : 'message_sent');
 
     const userMessage: Message = {
       id: Date.now().toString(),

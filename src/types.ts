@@ -77,6 +77,7 @@ export interface WorkbenchInsight {
 export type TabType =
   | 'xiaowan'
   | 'workbench'
+  | 'analytics'
   | 'clients'
   | 'testdrive'
   | 'orders'
@@ -242,6 +243,97 @@ export interface WorkbenchPreferences {
   sectionOrder: WorkbenchSectionId[];
   quickToolIds: string[];
   autoPromoteEnabled: boolean;
+}
+
+/**
+ * Product-analytics fields are intentionally enum-only. Customer records,
+ * search terms, quote amounts and conversation content never enter this model.
+ */
+export type AnalyticsActorType = 'business' | 'operations';
+
+export type AnalyticsRoleType =
+  | 'product_expert'
+  | 'store_manager'
+  | 'service_manager'
+  | 'regional_director'
+  | 'delivery_specialist'
+  | 'product_operations';
+
+export type AnalyticsModule =
+  | 'app'
+  | 'workbench'
+  | 'work_essential'
+  | 'app_center'
+  | 'client_360'
+  | 'quote'
+  | 'test_drive'
+  | 'order_delivery'
+  | 'xiaowan'
+  | 'analytics';
+
+export type AnalyticsAction =
+  | 'app_opened'
+  | 'page_viewed'
+  | 'role_switched'
+  | 'quick_action_started'
+  | 'priority_opened'
+  | 'schedule_opened'
+  | 'auto_transfer_toggled'
+  | 'auto_transfer_executed'
+  | 'layout_reordered'
+  | 'tool_launched'
+  | 'tool_configured'
+  | 'app_center_opened'
+  | 'client_opened'
+  | 'client_created'
+  | 'client_search_started'
+  | 'client_filter_changed'
+  | 'quote_opened'
+  | 'quote_generated'
+  | 'quote_shared'
+  | 'test_drive_booked'
+  | 'test_drive_released'
+  | 'order_created'
+  | 'contract_opened'
+  | 'delivery_started'
+  | 'quick_prompt_sent'
+  | 'message_sent'
+  | 'voice_started'
+  | 'period_changed'
+  | 'source_explained';
+
+export type AnalyticsResult = 'success' | 'enabled' | 'disabled' | 'started' | 'completed';
+
+export type AnalyticsPropertyValue =
+  | 'workbench'
+  | 'clients'
+  | 'testdrive'
+  | 'orders'
+  | 'app_center'
+  | 'work_essential'
+  | 'quote'
+  | 'xiaowan'
+  | 'analytics'
+  | 'ai'
+  | 'manual'
+  | 'automatic'
+  | 'all'
+  | 'stage';
+
+export interface ProductAnalyticsEvent {
+  id: string;
+  occurredAt: string;
+  anonymousSessionId: string;
+  actorType: AnalyticsActorType;
+  roleType: AnalyticsRoleType;
+  module: AnalyticsModule;
+  action: AnalyticsAction;
+  result: AnalyticsResult;
+  properties?: {
+    source?: AnalyticsPropertyValue;
+    target?: AnalyticsPropertyValue;
+    method?: 'ai' | 'manual' | 'automatic';
+  };
 }
 
 export interface NotificationItem {

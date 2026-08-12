@@ -24,6 +24,8 @@ interface AppCenterModalProps {
   initialToolId?: string | null;
   onTogglePinnedTool: (toolId: string) => void;
   onLaunchTool: (tool: AppTool) => void;
+  onToolDetailOpen?: () => void;
+  onGenerateQuote?: () => void;
 }
 
 export const AppCenterModal: React.FC<AppCenterModalProps> = ({
@@ -38,6 +40,8 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
   initialToolId,
   onTogglePinnedTool,
   onLaunchTool,
+  onToolDetailOpen,
+  onGenerateQuote,
 }) => {
   const [activeTool, setActiveTool] = useState<string | null>(null);
 
@@ -110,6 +114,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
                       onClose();
                       return;
                     }
+                    onToolDetailOpen?.();
                     setActiveTool(tool.id);
                   }}
                   className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer flex flex-col justify-between group"
@@ -252,7 +257,10 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
               </div>
 
               <button
-                onClick={() => alert(`已成功生成购车报价单明细，可直接通过微信发送给客户！`)}
+                onClick={() => {
+                  onGenerateQuote?.();
+                  alert('已成功生成购车报价单明细，可直接通过微信发送给客户！');
+                }}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
               >
                 <Share2 className="w-4 h-4" />
