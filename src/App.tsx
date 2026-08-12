@@ -30,6 +30,7 @@ import {
 } from './lib/workbenchPreferences';
 import {
   getAnalyticsActorType,
+  getAnalyticsJourney,
   getAnalyticsRoleType,
   resetLocalAnalyticsEvents,
   trackAnalyticsEvent,
@@ -87,7 +88,7 @@ const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalytics
   inventory: 'work_essential',
 };
 
-type AnalyticsPayload = Pick<ProductAnalyticsEvent, 'module' | 'action' | 'result' | 'properties'>;
+type AnalyticsPayload = Pick<ProductAnalyticsEvent, 'module' | 'action' | 'status' | 'trustLevel' | 'properties'>;
 
 export default function App() {
   // Main Account & Tab State
@@ -150,6 +151,7 @@ export default function App() {
     trackAnalyticsEvent({
       actorType: getAnalyticsActorType(account),
       roleType: getAnalyticsRoleType(account.id),
+      journey: getAnalyticsJourney(account),
       ...payload,
     });
     setAnalyticsRevision((revision) => revision + 1);
@@ -174,7 +176,7 @@ export default function App() {
   useEffect(() => {
     if (hasRecordedAppOpenRef.current) return;
     hasRecordedAppOpenRef.current = true;
-    recordAnalytics(currentAccount, { module: 'app', action: 'app_opened', result: 'success' });
+    recordAnalytics(currentAccount, { module: 'app', action: 'app_opened', status: 'viewed', trustLevel: 'verified_behavior' });
   }, [currentAccount, recordAnalytics]);
 
   useEffect(() => {
@@ -184,7 +186,8 @@ export default function App() {
     recordAnalytics(currentAccount, {
       module: analyticsModuleByTab[activeTab],
       action: 'page_viewed',
-      result: 'success',
+      status: 'viewed',
+      trustLevel: 'verified_behavior',
       properties: analyticsTargetByTab[activeTab] ? { target: analyticsTargetByTab[activeTab] } : undefined,
     });
   }, [activeTab, currentAccount, recordAnalytics]);
@@ -209,8 +212,9 @@ export default function App() {
     recordAnalytics(currentAccount, {
       module: 'work_essential',
       action: 'tool_configured',
-      result: 'completed',
-      properties: { target: 'work_essential' },
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
+      properties: { target: 'work_essential', configurationAction: isPinned ? 'remove' : 'add', toolType: 'tool' },
     });
     const tool = availableTools.find((item) => item.id === toolId);
     showToast(isPinned ? `已从工作必备移除：${tool?.quickLabel || '应用'}` : `已添加到工作必备：${tool?.quickLabel || '应用'}`);
@@ -218,7 +222,7 @@ export default function App() {
 
   const handleSectionOrderChange = (sectionOrder: WorkbenchSectionId[]) => {
     updateWorkbenchPreferences({ ...workbenchPreferences, sectionOrder });
-    recordAnalytics(currentAccount, { module: 'workbench', action: 'layout_reordered', result: 'completed' });
+    recordAnalytics(currentAccount, { module: 'workbench', action: 'layout_reordered', status: 'succeeded', trustLevel: 'verified_behavior', properties: { configurationAction: 'reorder' } });
   };
 
   const handleAutoPromoteEnabledChange = (autoPromoteEnabled: boolean) => {
@@ -226,13 +230,14 @@ export default function App() {
     recordAnalytics(currentAccount, {
       module: 'workbench',
       action: 'auto_transfer_toggled',
-      result: autoPromoteEnabled ? 'enabled' : 'disabled',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
       properties: { method: 'automatic' },
     });
     showToast(autoPromoteEnabled ? '已开启自动转入' : '已关闭自动转入');
   };
 
-  const handlePromoteSchedule = (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => {
+  const handlePromoteSchedule = (item: WorkbenchScheduleItem, source: 'ai' | 'manual', mode: 'manual' | 'automatic' = 'manual') => {
     const priority: WorkbenchPriority = {
       id: `promoted-${item.id}`,
       rank: 1,
@@ -258,15 +263,16 @@ export default function App() {
     });
     recordAnalytics(currentAccount, {
       module: 'workbench',
-      action: 'auto_transfer_executed',
-      result: 'completed',
-      properties: { method: source, source },
+      action: 'priority_transferred',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
+      properties: { method: mode, source },
     });
     showToast(source === 'ai' ? `AI 已将「${item.title}」转为最紧急事项` : `已将「${item.title}」设为最紧急事项`);
   };
 
   const openAppCenter = (toolId: string | null = null) => {
-    recordAnalytics(currentAccount, { module: 'app_center', action: 'app_center_opened', result: 'success' });
+    recordAnalytics(currentAccount, { module: 'app_center', action: 'app_center_opened', status: 'viewed', trustLevel: 'verified_behavior' });
     setAppCenterInitialToolId(toolId);
     setIsAppCenterOpen(true);
   };
@@ -275,11 +281,12 @@ export default function App() {
     recordAnalytics(currentAccount, {
       module: source,
       action: 'tool_launched',
-      result: 'completed',
-      properties: { source },
+      status: 'started',
+      trustLevel: 'process_proxy',
+      properties: { source, toolType: 'tool' },
     });
     if (tool.action === 'quote') {
-      recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', result: 'started', properties: { source } });
+      recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', status: 'started', trustLevel: 'process_proxy', properties: { source } });
       setQuoteBuilderClient(mockClients[0]);
       return;
     }
@@ -291,12 +298,12 @@ export default function App() {
   };
 
   const openClient360 = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
-    recordAnalytics(currentAccount, { module: 'client_360', action: 'client_opened', result: 'completed', properties: { source } });
+    recordAnalytics(currentAccount, { module: 'client_360', action: 'client_opened', status: 'viewed', trustLevel: 'process_proxy', properties: { source } });
     setSelectedClient360(client);
   };
 
   const openQuoteBuilder = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
-    recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', result: 'started', properties: { source } });
+    recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', status: 'started', trustLevel: 'process_proxy', properties: { source } });
     setQuoteBuilderClient(client);
   };
 
@@ -306,7 +313,8 @@ export default function App() {
     recordAnalytics(currentAccount, {
       module: 'app',
       action: 'role_switched',
-      result: 'completed',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
       properties: { target: nextAccount.id === 'operations' ? 'analytics' : 'workbench' },
     });
     setActiveAccountId(accId);
@@ -392,7 +400,7 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onOpenNotifications={() => setIsNotificationsOpen(true)}
             onQuickAction={() => {
-              recordAnalytics(currentAccount, { module: 'app', action: 'quick_action_started', result: 'started' });
+              recordAnalytics(currentAccount, { module: 'app', action: 'quick_action_started', status: 'started', trustLevel: 'process_proxy' });
               showToast('已触发：新建客户跟进 / 快速排程试驾');
             }}
           />
@@ -423,8 +431,10 @@ export default function App() {
                 onPromoteSchedule={handlePromoteSchedule}
                 autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
                 onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
-                onPriorityOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'priority_opened', result: 'completed' })}
-                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', result: 'completed' })}
+                onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
+                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
+                onRecommendationShown={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_shown', status: 'viewed', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
+                onRecommendationAccepted={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_accepted', status: 'succeeded', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
               />
             </motion.div>
           ) : activeTab === 'clients' ? (
@@ -438,9 +448,9 @@ export default function App() {
               <ClientsView
                 onSelectClient={(client) => openClient360(client, 'clients')}
                 onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'clients')}
-                onClientCreated={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_created', result: 'started' })}
-                onSearchStarted={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_search_started', result: 'started' })}
-                onFilterChanged={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_filter_changed', result: 'completed' })}
+                onClientCreated={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_created', status: 'started', trustLevel: 'process_proxy' })}
+                onSearchStarted={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_search_started', status: 'started', trustLevel: 'process_proxy' })}
+                onFilterChanged={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_filter_changed', status: 'succeeded', trustLevel: 'verified_behavior' })}
               />
             </motion.div>
           ) : activeTab === 'testdrive' ? (
@@ -452,8 +462,8 @@ export default function App() {
               transition={{ duration: 0.15 }}
             >
               <TestDriveView
-                onBookTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_booked', result: 'started' })}
-                onReleaseTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_released', result: 'completed' })}
+                onBookTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_booked', status: 'started', trustLevel: 'process_proxy' })}
+                onReleaseTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_released', status: 'started', trustLevel: 'process_proxy' })}
               />
             </motion.div>
           ) : activeTab === 'orders' || activeTab === 'approvals' || activeTab === 'inventory' || activeTab === 'service' || activeTab === 'region' ? (
@@ -465,9 +475,9 @@ export default function App() {
               transition={{ duration: 0.15 }}
             >
               <OrdersView
-                onOrderCreated={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'order_created', result: 'started' })}
-                onContractOpened={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'contract_opened', result: 'completed' })}
-                onDeliveryStarted={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'delivery_started', result: 'started' })}
+                onOrderCreated={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'order_created', status: 'started', trustLevel: 'process_proxy' })}
+                onContractOpened={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'contract_opened', status: 'viewed', trustLevel: 'process_proxy' })}
+                onDeliveryStarted={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'delivery_started', status: 'started', trustLevel: 'process_proxy' })}
               />
             </motion.div>
           ) : activeTab === 'xiaowan' && currentAccount.hasXiaowan ? (
@@ -481,7 +491,7 @@ export default function App() {
               <XiaowanView
                 advisorName={currentAccount.name}
                 storeName={currentAccount.store}
-                onAnalyticsAction={(action) => recordAnalytics(currentAccount, { module: 'xiaowan', action, result: 'completed' })}
+                onAnalyticsAction={(action) => recordAnalytics(currentAccount, { module: 'xiaowan', action, status: 'started', trustLevel: 'process_proxy' })}
               />
             </motion.div>
           ) : activeTab === 'analytics' && currentAccount.id === 'operations' ? (
@@ -494,8 +504,8 @@ export default function App() {
             >
               <AnalyticsView
                 revision={analyticsRevision}
-                onPeriodChanged={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'period_changed', result: 'completed' })}
-                onSourceExplained={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'source_explained', result: 'completed' })}
+                onPeriodChanged={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'period_changed', status: 'viewed', trustLevel: 'verified_behavior' })}
+                onSourceExplained={() => recordAnalytics(currentAccount, { module: 'analytics', action: 'source_explained', status: 'viewed', trustLevel: 'verified_behavior' })}
                 onResetLocalData={resetAnalytics}
               />
             </motion.div>
@@ -522,8 +532,10 @@ export default function App() {
                 onPromoteSchedule={handlePromoteSchedule}
                 autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
                 onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
-                onPriorityOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'priority_opened', result: 'completed' })}
-                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', result: 'completed' })}
+                onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
+                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
+                onRecommendationShown={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_shown', status: 'viewed', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
+                onRecommendationAccepted={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_accepted', status: 'succeeded', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
               />
             </motion.div>
           )}
@@ -570,8 +582,10 @@ export default function App() {
         client={quoteBuilderClient}
         advisorName={profile.name}
         storeName={profile.store}
-        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', result: 'completed' })}
-        onShareQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_shared', result: 'completed' })}
+        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', status: 'succeeded', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
+        onShareQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_shared', status: 'external_handoff', trustLevel: 'process_proxy', properties: { toolType: 'quote_card' } })}
+        onCancelQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_cancelled', status: 'cancelled', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
+        onQuoteFailed={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_failed', status: 'failed', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
       />
 
       <StoreSwitcherModal
@@ -597,8 +611,8 @@ export default function App() {
         initialToolId={appCenterInitialToolId}
         onTogglePinnedTool={handleQuickToolToggle}
         onLaunchTool={(tool) => handleLaunchTool(tool, 'app_center')}
-        onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_launched', result: 'started', properties: { source: 'app_center' } })}
-        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', result: 'completed', properties: { source: 'app_center' } })}
+        onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_detail_viewed', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'tool' } })}
+        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', status: 'succeeded', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'quote_card' } })}
       />
 
       <CustomerServiceModal

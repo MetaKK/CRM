@@ -36,10 +36,12 @@ interface WorkbenchViewProps {
   onOpenQuoteBuilder: (client: ClientRecord) => void;
   onLaunchTool: (tool: AppTool) => void;
   onSectionOrderChange: (sectionOrder: WorkbenchSectionId[]) => void;
-  onPromoteSchedule: (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => void;
+  onPromoteSchedule: (item: WorkbenchScheduleItem, source: 'ai' | 'manual', mode?: 'manual' | 'automatic') => void;
   onAutoPromoteEnabledChange: (enabled: boolean) => void;
-  onPriorityOpened?: () => void;
+  onPriorityOpened?: (isTransferred: boolean) => void;
   onScheduleOpened?: () => void;
+  onRecommendationShown?: () => void;
+  onRecommendationAccepted?: () => void;
   currentAccount: RoleAccount;
   priorities: WorkbenchPriority[];
   tools: AppTool[];
@@ -131,6 +133,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   onAutoPromoteEnabledChange,
   onPriorityOpened,
   onScheduleOpened,
+  onRecommendationShown,
+  onRecommendationAccepted,
   currentAccount,
   priorities,
   tools,
@@ -141,6 +145,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const [focusTab, setFocusTab] = useState<FocusTab>('priority');
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const aiTimerRef = useRef<number | null>(null);
+  const shownRecommendationRef = useRef<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -149,6 +154,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   useEffect(() => {
     if (aiTimerRef.current !== null) window.clearTimeout(aiTimerRef.current);
     aiTimerRef.current = null;
+    shownRecommendationRef.current = null;
     setFocusTab('priority');
     setIsAiAnalyzing(false);
   }, [currentAccount.id]);
@@ -160,7 +166,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const getClient = (clientId?: string) => mockClients.find((client) => client.id === clientId);
 
   const handlePriorityAction = (priority: WorkbenchPriority) => {
-    onPriorityOpened?.();
+    onPriorityOpened?.(Boolean(priority.source));
     const client = getClient(priority.clientId);
     if (priority.interaction === 'quote' && client) {
       onOpenQuoteBuilder(client);
@@ -214,7 +220,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     if (!aiCandidate || isAiAnalyzing) return;
     setIsAiAnalyzing(true);
     aiTimerRef.current = window.setTimeout(() => {
-      onPromoteSchedule(aiCandidate, 'ai');
+      onRecommendationAccepted?.();
+      onPromoteSchedule(aiCandidate, 'ai', 'manual');
       setFocusTab('priority');
       setIsAiAnalyzing(false);
       aiTimerRef.current = null;
@@ -236,12 +243,18 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     const candidate = aiCandidate;
     setIsAiAnalyzing(true);
     aiTimerRef.current = window.setTimeout(() => {
-      onPromoteSchedule(candidate, 'ai');
+      onPromoteSchedule(candidate, 'ai', 'automatic');
       setFocusTab('priority');
       setIsAiAnalyzing(false);
       aiTimerRef.current = null;
     }, 1100);
   }, [aiCandidate, autoPromoteEnabled, isAiAnalyzing, onPromoteSchedule, primaryPriority]);
+
+  useEffect(() => {
+    if (primaryPriority || !aiCandidate || shownRecommendationRef.current === aiCandidate.id) return;
+    shownRecommendationRef.current = aiCandidate.id;
+    onRecommendationShown?.();
+  }, [aiCandidate, onRecommendationShown, primaryPriority]);
 
   const handleManualPromotion = (item: WorkbenchScheduleItem) => {
     if (promotedScheduleIds.has(item.id)) return;

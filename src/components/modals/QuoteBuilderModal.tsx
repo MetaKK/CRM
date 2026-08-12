@@ -21,6 +21,8 @@ interface QuoteBuilderModalProps {
   storeName: string;
   onGenerateQuote?: () => void;
   onShareQuote?: () => void;
+  onCancelQuote?: () => void;
+  onQuoteFailed?: () => void;
 }
 
 export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
@@ -31,6 +33,8 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
   storeName,
   onGenerateQuote,
   onShareQuote,
+  onCancelQuote,
+  onQuoteFailed,
 }) => {
   if (!isOpen || !client) return null;
 
@@ -54,10 +58,16 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
 
   const [copied, setCopied] = useState(false);
 
-  const handleCopyQuote = () => {
+  const handleCopyQuote = async () => {
     onGenerateQuote?.();
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard?.writeText(`CRM 报价卡已生成 · ${carModel}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      onQuoteFailed?.();
+    }
   };
 
   return (
@@ -77,7 +87,10 @@ export const QuoteBuilderModal: React.FC<QuoteBuilderModalProps> = ({
             <h3 className="font-extrabold text-base tracking-tight mt-1">给 {client.name} 开立官方报价单</h3>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              onCancelQuote?.();
+              onClose();
+            }}
             className="p-2 rounded-full hover:bg-white/15 text-blue-100 hover:text-white transition-all cursor-pointer"
           >
             <X className="w-5 h-5 stroke-[2]" />

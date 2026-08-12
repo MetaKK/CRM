@@ -278,11 +278,15 @@ export type AnalyticsAction =
   | 'quick_action_started'
   | 'priority_opened'
   | 'schedule_opened'
+  | 'recommendation_shown'
+  | 'recommendation_accepted'
   | 'auto_transfer_toggled'
-  | 'auto_transfer_executed'
+  | 'priority_transferred'
+  | 'transferred_priority_opened'
   | 'layout_reordered'
   | 'tool_launched'
   | 'tool_configured'
+  | 'tool_detail_viewed'
   | 'app_center_opened'
   | 'client_opened'
   | 'client_created'
@@ -296,13 +300,25 @@ export type AnalyticsAction =
   | 'order_created'
   | 'contract_opened'
   | 'delivery_started'
+  | 'quote_cancelled'
+  | 'quote_failed'
   | 'quick_prompt_sent'
   | 'message_sent'
   | 'voice_started'
   | 'period_changed'
   | 'source_explained';
 
-export type AnalyticsResult = 'success' | 'enabled' | 'disabled' | 'started' | 'completed';
+export type AnalyticsEventStatus =
+  | 'viewed'
+  | 'started'
+  | 'succeeded'
+  | 'external_handoff'
+  | 'failed'
+  | 'cancelled';
+
+export type AnalyticsJourney = 'sales' | 'service' | 'delivery' | 'management' | 'product_operations';
+
+export type AnalyticsTrustLevel = 'verified_behavior' | 'process_proxy' | 'unobservable';
 
 export type AnalyticsPropertyValue =
   | 'workbench'
@@ -318,21 +334,36 @@ export type AnalyticsPropertyValue =
   | 'manual'
   | 'automatic'
   | 'all'
-  | 'stage';
+  | 'stage'
+  | 'add'
+  | 'remove'
+  | 'reorder'
+  | 'priority'
+  | 'schedule'
+  | 'quote_card'
+  | 'tool';
 
 export interface ProductAnalyticsEvent {
+  schemaVersion: 2;
   id: string;
   occurredAt: string;
+  anonymousBrowserId: string;
   anonymousSessionId: string;
   actorType: AnalyticsActorType;
   roleType: AnalyticsRoleType;
+  journey: AnalyticsJourney;
   module: AnalyticsModule;
   action: AnalyticsAction;
-  result: AnalyticsResult;
+  status: AnalyticsEventStatus;
+  trustLevel: AnalyticsTrustLevel;
+  source: 'demo_baseline' | 'local_realtime';
   properties?: {
     source?: AnalyticsPropertyValue;
     target?: AnalyticsPropertyValue;
     method?: 'ai' | 'manual' | 'automatic';
+    stage?: 'priority' | 'schedule';
+    configurationAction?: 'add' | 'remove' | 'reorder';
+    toolType?: 'quote_card' | 'tool';
   };
 }
 
