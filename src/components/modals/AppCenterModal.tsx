@@ -1,18 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Calculator,
-  Car,
-  Image as ImageIcon,
-  QrCode,
-  FileCheck,
-  Coins,
   ChevronRight,
   Sparkles,
   Share2,
+  Check,
+  Plus,
 } from 'lucide-react';
-import { mockAppTools } from '../../data/mockData';
 import { AppTool } from '../../types';
+import { MAX_QUICK_TOOLS } from '../../lib/workbenchPreferences';
+import { getAppToolIcon } from '../appTools';
 
 interface AppCenterModalProps {
   isOpen: boolean;
@@ -20,6 +18,12 @@ interface AppCenterModalProps {
   advisorName: string;
   storeName: string;
   phone: string;
+  roleTitle: string;
+  tools: AppTool[];
+  pinnedToolIds: string[];
+  initialToolId?: string | null;
+  onTogglePinnedTool: (toolId: string) => void;
+  onLaunchTool: (tool: AppTool) => void;
 }
 
 export const AppCenterModal: React.FC<AppCenterModalProps> = ({
@@ -28,8 +32,18 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
   advisorName,
   storeName,
   phone,
+  roleTitle,
+  tools,
+  pinnedToolIds,
+  initialToolId,
+  onTogglePinnedTool,
+  onLaunchTool,
 }) => {
   const [activeTool, setActiveTool] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) setActiveTool(initialToolId || null);
+  }, [initialToolId, isOpen]);
 
   // Calculator State
   const [carPrice, setCarPrice] = useState<number>(189800);
@@ -50,24 +64,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
   const insurance = 5500;
   const totalOnRoad = downPayment + purchaseTax + insurance;
 
-  const renderToolIcon = (iconName: string, color: string) => {
-    switch (iconName) {
-      case 'Calculator':
-        return <Calculator className="w-6 h-6 text-white" />;
-      case 'Car':
-        return <Car className="w-6 h-6 text-white" />;
-      case 'Image':
-        return <ImageIcon className="w-6 h-6 text-white" />;
-      case 'QrCode':
-        return <QrCode className="w-6 h-6 text-white" />;
-      case 'FileCheck':
-        return <FileCheck className="w-6 h-6 text-white" />;
-      case 'Coins':
-        return <Coins className="w-6 h-6 text-white" />;
-      default:
-        return <Calculator className="w-6 h-6 text-white" />;
-    }
-  };
+  const selectedTool = tools.find((tool) => tool.id === activeTool);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 select-none">
@@ -81,10 +78,10 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-bold text-gray-900">应用中心</h3>
               <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full border border-blue-100">
-                顾问专属
+                {roleTitle}可用
               </span>
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">全套智慧营销与算价签单工具</p>
+            <p className="text-xs text-gray-400 mt-0.5">选择常用应用，工作台最多保留 {MAX_QUICK_TOOLS} 个</p>
           </div>
           <button
             onClick={onClose}
@@ -99,19 +96,50 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
           {/* Tool Grid */}
           {!activeTool ? (
             <div className="grid grid-cols-2 gap-3">
-              {mockAppTools.map((tool: AppTool) => (
+              {tools.map((tool: AppTool) => {
+                const Icon = getAppToolIcon(tool.iconName);
+                const isPinned = pinnedToolIds.includes(tool.id);
+                const isAtLimit = !isPinned && pinnedToolIds.length >= MAX_QUICK_TOOLS;
+
+                return (
                 <div
                   key={tool.id}
-                  onClick={() => setActiveTool(tool.id)}
+                  onClick={() => {
+                    if (tool.targetTab) {
+                      onLaunchTool(tool);
+                      onClose();
+                      return;
+                    }
+                    setActiveTool(tool.id);
+                  }}
                   className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 hover:border-blue-200 hover:bg-blue-50/30 transition-all cursor-pointer flex flex-col justify-between group"
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div
-                      className={`w-11 h-11 rounded-2xl ${tool.color} flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform`}
+                      className="w-11 h-11 rounded-xl bg-blue-50 text-[#1a6fd4] flex items-center justify-center group-hover:scale-105 transition-transform"
                     >
-                      {renderToolIcon(tool.iconName, tool.color)}
+                      <Icon className="w-5 h-5" />
                     </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-600 transition-colors" />
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!isAtLimit) onTogglePinnedTool(tool.id);
+                      }}
+                      aria-label={isPinned ? `从常用工具移除${tool.name}` : `添加${tool.name}到常用工具`}
+                      aria-pressed={isPinned}
+                      disabled={isAtLimit}
+                      className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-semibold transition-colors cursor-pointer ${
+                        isPinned
+                          ? 'border-blue-100 bg-blue-50 text-[#1a6fd4]'
+                          : isAtLimit
+                            ? 'border-gray-100 bg-white text-gray-300 cursor-not-allowed'
+                            : 'border-gray-200 bg-white text-gray-500 hover:border-blue-200 hover:text-[#1a6fd4]'
+                      }`}
+                    >
+                      {isPinned ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                      <span>{isPinned ? '常用' : '添加'}</span>
+                    </button>
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-900 text-sm group-hover:text-blue-600 transition-colors">
@@ -122,7 +150,8 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : activeTool === 'calc' ? (
             /* Sub-tool 1: Car Price Loan Calculator */
@@ -296,7 +325,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
               </div>
               <h4 className="font-bold text-gray-900 text-base">功能准备就绪</h4>
               <p className="text-xs text-gray-400 max-w-xs mx-auto">
-                顾问 [{advisorName}] 已成功连接【{storeName}】营销中台数据库，可直接向客户发送微信互动凭证。
+                {selectedTool?.name || '该应用'}已为 {advisorName} 准备就绪，可在【{storeName}】直接继续处理业务。
               </p>
             </div>
           )}

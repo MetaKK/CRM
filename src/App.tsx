@@ -1,13 +1,31 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AdvisorProfile, MetricData, StoreOption, ClientRecord, TabType } from './types';
 import {
+  AdvisorProfile,
+  AppTool,
+  MetricData,
+  StoreOption,
+  ClientRecord,
+  TabType,
+  WorkbenchPreferences,
+  WorkbenchPriority,
+  WorkbenchScheduleItem,
+  WorkbenchSectionId,
+} from './types';
+import {
+  defaultQuickToolIdsByRole,
   initialAdvisorProfile,
   initialMetrics,
   mockStores,
   mockClients,
+  mockAppTools,
   mockRoleAccounts,
 } from './data/mockData';
+import {
+  MAX_QUICK_TOOLS,
+  readWorkbenchPreferences,
+  saveWorkbenchPreferences,
+} from './lib/workbenchPreferences';
 
 // Core UI Components
 import { MobileFrame } from './components/MobileFrame';
@@ -33,6 +51,9 @@ import { ClientsView } from './components/views/ClientsView';
 import { TestDriveView } from './components/views/TestDriveView';
 import { OrdersView } from './components/views/OrdersView';
 
+const getAvailableTools = (accountId: string) =>
+  mockAppTools.filter((tool) => !tool.roleIds?.length || tool.roleIds.includes(accountId));
+
 export default function App() {
   // Main Account & Tab State
   const [activeAccountId, setActiveAccountId] = useState<string>('kian');
@@ -42,6 +63,22 @@ export default function App() {
   // Derive active account profile
   const currentAccount =
     mockRoleAccounts.find((a) => a.id === activeAccountId) || mockRoleAccounts[0];
+  const availableTools = getAvailableTools(currentAccount.id);
+  const defaultQuickToolIds = defaultQuickToolIdsByRole[currentAccount.id] || [];
+  const [promotedPrioritiesByAccount, setPromotedPrioritiesByAccount] = useState<Record<string, WorkbenchPriority[]>>({});
+  const workbenchPriorities = [
+    ...(promotedPrioritiesByAccount[currentAccount.id] || []),
+    ...currentAccount.workbenchPriorities,
+  ];
+
+  const [workbenchPreferences, setWorkbenchPreferences] = useState<WorkbenchPreferences>(() =>
+    readWorkbenchPreferences(
+      'kian',
+      getAvailableTools('kian').map((tool) => tool.id),
+      defaultQuickToolIdsByRole.kian || [],
+      mockRoleAccounts.find((account) => account.id === 'kian')?.autoPromoteEnabledByDefault,
+    ),
+  );
 
   const [profile, setProfile] = useState<AdvisorProfile>({
     name: currentAccount.name,
@@ -57,6 +94,7 @@ export default function App() {
   // Modals state
   const [isStoreSwitcherOpen, setIsStoreSwitcherOpen] = useState(false);
   const [isAppCenterOpen, setIsAppCenterOpen] = useState(false);
+  const [appCenterInitialToolId, setAppCenterInitialToolId] = useState<string | null>(null);
   const [isCustomerServiceOpen, setIsCustomerServiceOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false);
@@ -75,11 +113,105 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 2500);
   };
 
+  useEffect(() => {
+    setWorkbenchPreferences(
+      readWorkbenchPreferences(
+        currentAccount.id,
+        availableTools.map((tool) => tool.id),
+        defaultQuickToolIds,
+        currentAccount.autoPromoteEnabledByDefault,
+      ),
+    );
+  }, [currentAccount.id]);
+
+  const updateWorkbenchPreferences = (nextPreferences: WorkbenchPreferences) => {
+    setWorkbenchPreferences(nextPreferences);
+    saveWorkbenchPreferences(currentAccount.id, nextPreferences);
+  };
+
+  const handleQuickToolToggle = (toolId: string) => {
+    const isPinned = workbenchPreferences.quickToolIds.includes(toolId);
+    if (!isPinned && workbenchPreferences.quickToolIds.length >= MAX_QUICK_TOOLS) {
+      showToast(`常用工具最多保留 ${MAX_QUICK_TOOLS} 个，请先移除一个`);
+      return;
+    }
+
+    const quickToolIds = isPinned
+      ? workbenchPreferences.quickToolIds.filter((id) => id !== toolId)
+      : [...workbenchPreferences.quickToolIds, toolId];
+
+    updateWorkbenchPreferences({ ...workbenchPreferences, quickToolIds });
+    const tool = availableTools.find((item) => item.id === toolId);
+    showToast(isPinned ? `已从常用工具移除：${tool?.quickLabel || '应用'}` : `已添加到常用工具：${tool?.quickLabel || '应用'}`);
+  };
+
+  const handleSectionOrderChange = (sectionOrder: WorkbenchSectionId[]) => {
+    updateWorkbenchPreferences({ ...workbenchPreferences, sectionOrder });
+  };
+
+  const handleAutoPromoteEnabledChange = (autoPromoteEnabled: boolean) => {
+    updateWorkbenchPreferences({ ...workbenchPreferences, autoPromoteEnabled });
+    showToast(autoPromoteEnabled ? '已开启自动补位' : '已关闭自动补位');
+  };
+
+  const handlePromoteSchedule = (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => {
+    const priority: WorkbenchPriority = {
+      id: `promoted-${item.id}`,
+      rank: 1,
+      urgency: item.urgency,
+      title: item.title,
+      subject: item.subject,
+      description: source === 'ai'
+        ? `AI 演示已按优先级、时效与客户影响完成排序 · ${item.description}`
+        : `由你从今日行程设为最紧急 · ${item.description}`,
+      dueLabel: `${item.time} 安排`,
+      actionLabel: '查看安排',
+      interaction: item.clientId && item.targetTab === 'clients' ? 'client' : 'tab',
+      targetTab: item.targetTab,
+      clientId: item.clientId,
+      source,
+      sourceScheduleId: item.id,
+    };
+
+    setPromotedPrioritiesByAccount((previous) => {
+      const existing = previous[currentAccount.id] || [];
+      if (existing.some((item) => item.sourceScheduleId === priority.sourceScheduleId)) return previous;
+      return { ...previous, [currentAccount.id]: [priority, ...existing] };
+    });
+    showToast(source === 'ai' ? `AI 已将「${item.title}」转为最紧急事项` : `已将「${item.title}」设为最紧急事项`);
+  };
+
+  const openAppCenter = (toolId: string | null = null) => {
+    setAppCenterInitialToolId(toolId);
+    setIsAppCenterOpen(true);
+  };
+
+  const handleLaunchTool = (tool: AppTool) => {
+    if (tool.action === 'quote') {
+      setQuoteBuilderClient(mockClients[0]);
+      return;
+    }
+    if (tool.targetTab) {
+      setActiveTab(tool.targetTab);
+      return;
+    }
+    openAppCenter(tool.id);
+  };
+
   // Switch Role Account
   const handleSelectAccount = (accId: string) => {
     setActiveAccountId(accId);
     setIsAccountDrawerOpen(false);
     const newAcc = mockRoleAccounts.find((a) => a.id === accId) || mockRoleAccounts[0];
+
+    setWorkbenchPreferences(
+      readWorkbenchPreferences(
+        newAcc.id,
+        getAvailableTools(newAcc.id).map((tool) => tool.id),
+        defaultQuickToolIdsByRole[newAcc.id] || [],
+        newAcc.autoPromoteEnabledByDefault,
+      ),
+    );
 
     setProfile({
       name: newAcc.name,
@@ -160,10 +292,19 @@ export default function App() {
             >
               <WorkbenchView
                 onNavigateToTab={(tab) => setActiveTab(tab)}
-                onOpenAppCenter={() => setIsAppCenterOpen(true)}
+                onOpenAppCenter={() => openAppCenter()}
                 onSelectClient={(client) => setSelectedClient360(client)}
                 onOpenQuoteBuilder={(client) => setQuoteBuilderClient(client)}
                 currentAccount={currentAccount}
+                priorities={workbenchPriorities}
+                tools={availableTools}
+                quickToolIds={workbenchPreferences.quickToolIds}
+                sectionOrder={workbenchPreferences.sectionOrder}
+                onLaunchTool={handleLaunchTool}
+                onSectionOrderChange={handleSectionOrderChange}
+                onPromoteSchedule={handlePromoteSchedule}
+                autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
+                onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
               />
             </motion.div>
           ) : activeTab === 'clients' ? (
@@ -219,10 +360,19 @@ export default function App() {
             >
               <WorkbenchView
                 onNavigateToTab={(tab) => setActiveTab(tab)}
-                onOpenAppCenter={() => setIsAppCenterOpen(true)}
+                onOpenAppCenter={() => openAppCenter()}
                 onSelectClient={(client) => setSelectedClient360(client)}
                 onOpenQuoteBuilder={(client) => setQuoteBuilderClient(client)}
                 currentAccount={currentAccount}
+                priorities={workbenchPriorities}
+                tools={availableTools}
+                quickToolIds={workbenchPreferences.quickToolIds}
+                sectionOrder={workbenchPreferences.sectionOrder}
+                onLaunchTool={handleLaunchTool}
+                onSectionOrderChange={handleSectionOrderChange}
+                onPromoteSchedule={handlePromoteSchedule}
+                autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
+                onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
               />
             </motion.div>
           )}
@@ -281,10 +431,19 @@ export default function App() {
 
       <AppCenterModal
         isOpen={isAppCenterOpen}
-        onClose={() => setIsAppCenterOpen(false)}
+        onClose={() => {
+          setIsAppCenterOpen(false);
+          setAppCenterInitialToolId(null);
+        }}
         advisorName={profile.name}
         storeName={profile.store}
         phone={profile.phone}
+        roleTitle={currentAccount.roleTitle}
+        tools={availableTools}
+        pinnedToolIds={workbenchPreferences.quickToolIds}
+        initialToolId={appCenterInitialToolId}
+        onTogglePinnedTool={handleQuickToolToggle}
+        onLaunchTool={handleLaunchTool}
       />
 
       <CustomerServiceModal

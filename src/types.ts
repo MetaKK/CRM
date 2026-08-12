@@ -27,8 +27,51 @@ export interface RoleAccount {
     color: string;
     targetTab?: TabType;
   }[];
+  workbenchPriorities: WorkbenchPriority[];
+  workbenchSchedule: WorkbenchScheduleItem[];
+  workbenchInsight: WorkbenchInsight;
   workbenchTitle: string;
   workbenchSubtitle: string;
+  workbenchEmptyStateTitle?: string;
+  workbenchEmptyStateDescription?: string;
+  autoPromoteEnabledByDefault?: boolean;
+  workbenchAutoPromoteUseCase?: string;
+}
+
+export interface WorkbenchPriority {
+  id: string;
+  rank: 1 | 2 | 3 | 4;
+  urgency: 'critical' | 'high' | 'medium' | 'normal';
+  title: string;
+  subject: string;
+  description: string;
+  dueLabel: string;
+  actionLabel: string;
+  interaction: 'client' | 'quote' | 'tab';
+  targetTab?: TabType;
+  clientId?: string;
+  source?: 'ai' | 'manual';
+  sourceScheduleId?: string;
+}
+
+export interface WorkbenchScheduleItem {
+  id: string;
+  time: string;
+  title: string;
+  subject: string;
+  description: string;
+  status: string;
+  urgency: WorkbenchPriority['urgency'];
+  targetTab?: TabType;
+  clientId?: string;
+}
+
+export interface WorkbenchInsight {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  targetTab?: TabType;
 }
 
 export type TabType =
@@ -183,10 +226,22 @@ export interface OrderRecord {
 export interface AppTool {
   id: string;
   name: string;
+  quickLabel: string;
   desc: string;
   iconName: string;
   color: string;
-  category: '销售工具' | '客户管理' | '数据分析' | '营销宣传';
+  category: '销售工具' | '客户管理' | '数据分析' | '营销宣传' | '经营管理' | '售后服务' | '交付服务';
+  roleIds?: string[];
+  targetTab?: TabType;
+  action?: 'quote';
+}
+
+export type WorkbenchSectionId = 'focus' | 'pulse' | 'tools';
+
+export interface WorkbenchPreferences {
+  sectionOrder: WorkbenchSectionId[];
+  quickToolIds: string[];
+  autoPromoteEnabled: boolean;
 }
 
 export interface NotificationItem {

@@ -1,327 +1,515 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Calculator,
-  Car,
-  CheckCircle2,
-  CheckSquare,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  FileText,
-  PhoneCall,
-  QrCode,
-  Send,
-  Sparkles,
-  Users,
-  Zap,
-} from 'lucide-react';
-import { mockClients, mockTestDrives, mockVehicles } from '../../data/mockData';
-import { ClientRecord, RoleAccount, TabType } from '../../types';
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ChevronRight, GripVertical, Plus, Sparkles } from 'lucide-react';
+import { mockClients } from '../../data/mockData';
+import {
+  AppTool,
+  ClientRecord,
+  RoleAccount,
+  TabType,
+  WorkbenchPriority,
+  WorkbenchScheduleItem,
+  WorkbenchSectionId,
+} from '../../types';
+import { getAppToolIcon } from '../appTools';
 
 interface WorkbenchViewProps {
   onNavigateToTab: (tab: TabType) => void;
   onOpenAppCenter: () => void;
   onSelectClient: (client: ClientRecord) => void;
   onOpenQuoteBuilder: (client: ClientRecord) => void;
+  onLaunchTool: (tool: AppTool) => void;
+  onSectionOrderChange: (sectionOrder: WorkbenchSectionId[]) => void;
+  onPromoteSchedule: (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => void;
+  onAutoPromoteEnabledChange: (enabled: boolean) => void;
   currentAccount: RoleAccount;
+  priorities: WorkbenchPriority[];
+  tools: AppTool[];
+  quickToolIds: string[];
+  sectionOrder: WorkbenchSectionId[];
+  autoPromoteEnabled: boolean;
 }
 
-const pipelineSteps: Array<{ id: string; label: string; count: number; tab: TabType }> = [
-  { id: 'leads', label: '潜客', count: 28, tab: 'clients' },
-  { id: 'followup', label: '跟进中', count: 14, tab: 'clients' },
-  { id: 'testdrive', label: '试驾', count: 6, tab: 'testdrive' },
-  { id: 'quote', label: '待报价', count: 5, tab: 'clients' },
-  { id: 'order', label: '大定', count: 3, tab: 'orders' },
-  { id: 'delivery', label: '交付', count: 2, tab: 'orders' },
-];
+type FocusTab = 'priority' | 'schedule';
+
+const urgencyTone: Record<WorkbenchPriority['urgency'], { dot: string; label: string; text: string }> = {
+  critical: { dot: 'bg-[#e84040]', label: '需立即处理', text: 'text-[#d63b3b]' },
+  high: { dot: 'bg-[#f0a800]', label: '高优先级', text: 'text-[#b77900]' },
+  medium: { dot: 'bg-[#1a6fd4]', label: '重点推进', text: 'text-[#1a6fd4]' },
+  normal: { dot: 'bg-emerald-500', label: '计划事项', text: 'text-emerald-700' },
+};
+
+const urgencyWeight: Record<WorkbenchPriority['urgency'], number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  normal: 1,
+};
+
+const sectionLabels: Record<WorkbenchSectionId, string> = {
+  focus: '最紧急的事与今日行程',
+  pulse: '今日经营脉搏',
+  tools: '常用工具',
+};
+
+const isSectionId = (value: string | undefined): value is WorkbenchSectionId =>
+  value === 'focus' || value === 'pulse' || value === 'tools';
+
+const timeValue = (value: string) => {
+  const [hour, minute] = value.split(':').map(Number);
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : Number.MAX_SAFE_INTEGER;
+};
+
+interface SortableWorkbenchPanelProps {
+  id: WorkbenchSectionId;
+  children: React.ReactNode;
+}
+
+const SortableWorkbenchPanel: React.FC<SortableWorkbenchPanelProps> = ({ id, children }) => {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-workbench-section-id={id}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className={`relative ${isDragging ? 'scale-[0.985] opacity-85' : ''}`}
+    >
+      <div className={isDragging ? 'pointer-events-none' : undefined}>{children}</div>
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`拖动以调整${sectionLabels[id]}的位置`}
+        className="absolute right-2 top-2 z-20 flex h-11 w-11 touch-none items-center justify-center rounded-lg text-[#aab8cd] transition-colors hover:bg-[#f3f8fe] hover:text-[#1a6fd4] focus-visible:bg-[#f3f8fe] focus-visible:text-[#1a6fd4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a6fd4] focus-visible:ring-offset-2 cursor-grab active:bg-blue-50 active:cursor-grabbing"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
 
 export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   onNavigateToTab,
   onOpenAppCenter,
   onSelectClient,
   onOpenQuoteBuilder,
+  onLaunchTool,
+  onSectionOrderChange,
+  onPromoteSchedule,
+  onAutoPromoteEnabledChange,
   currentAccount,
+  priorities,
+  tools,
+  quickToolIds,
+  sectionOrder,
+  autoPromoteEnabled,
 }) => {
-  const [activePipelineStage, setActivePipelineStage] = useState('leads');
-  const [activeMetric, setActiveMetric] = useState('线索');
-  const [nextTaskStatus, setNextTaskStatus] = useState<'ready' | 'received'>('ready');
-  const urgentLeads = mockClients.filter((client) => client.slaStatus === 'warning' || client.slaStatus === 'overdue');
-  const nextDrive = mockTestDrives[0];
+  const [focusTab, setFocusTab] = useState<FocusTab>('priority');
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const aiTimerRef = useRef<number | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
-  const taskActions = [
-    { label: '首次跟进', icon: PhoneCall, value: 5 },
-    { label: 'PDC 任务', icon: CheckSquare, value: 2 },
-    { label: '试驾跟进', icon: Car, value: 3 },
-    { label: '大定任务', icon: FileText, value: 1 },
-  ];
+  useEffect(() => {
+    if (aiTimerRef.current !== null) window.clearTimeout(aiTimerRef.current);
+    aiTimerRef.current = null;
+    setFocusTab('priority');
+    setIsAiAnalyzing(false);
+  }, [currentAccount.id]);
+
+  useEffect(() => () => {
+    if (aiTimerRef.current !== null) window.clearTimeout(aiTimerRef.current);
+  }, []);
+
+  const getClient = (clientId?: string) => mockClients.find((client) => client.id === clientId);
+
+  const handlePriorityAction = (priority: WorkbenchPriority) => {
+    const client = getClient(priority.clientId);
+    if (priority.interaction === 'quote' && client) {
+      onOpenQuoteBuilder(client);
+      return;
+    }
+    if (priority.interaction === 'client' && client) {
+      onSelectClient(client);
+      return;
+    }
+    if (priority.targetTab) onNavigateToTab(priority.targetTab);
+  };
+
+  const handleScheduleAction = (item: WorkbenchScheduleItem) => {
+    const client = getClient(item.clientId);
+    if (client && item.targetTab === 'clients') {
+      onSelectClient(client);
+      return;
+    }
+    if (item.targetTab) onNavigateToTab(item.targetTab);
+  };
+
+  const activeSchedule = currentAccount.workbenchSchedule.filter((item) => item.status !== '已完成');
+  const displayedPriorities = priorities.slice(0, 3);
+  const primaryPriority = displayedPriorities[0];
+  const followingPriorities = displayedPriorities.slice(1);
+  const promotedScheduleIds = new Set(
+    priorities.flatMap((priority) => priority.sourceScheduleId ? [priority.sourceScheduleId] : []),
+  );
+  const aiCandidate = [...activeSchedule]
+    .filter((item) => !promotedScheduleIds.has(item.id))
+    .sort((first, second) => (
+      urgencyWeight[second.urgency] - urgencyWeight[first.urgency]
+      || Number(Boolean(second.clientId)) - Number(Boolean(first.clientId))
+      || timeValue(first.time) - timeValue(second.time)
+    ))[0];
+  const primaryToolClient = getClient(primaryPriority?.clientId) || mockClients[0];
+  const quickTools = quickToolIds
+    .map((toolId) => tools.find((tool) => tool.id === toolId))
+    .filter((tool): tool is AppTool => Boolean(tool));
+
+  const handleToolLaunch = (tool: AppTool) => {
+    if (tool.action === 'quote') {
+      onOpenQuoteBuilder(primaryToolClient);
+      return;
+    }
+    onLaunchTool(tool);
+  };
+
+  const handleAiPromotion = () => {
+    if (!aiCandidate || isAiAnalyzing) return;
+    setIsAiAnalyzing(true);
+    aiTimerRef.current = window.setTimeout(() => {
+      onPromoteSchedule(aiCandidate, 'ai');
+      setFocusTab('priority');
+      setIsAiAnalyzing(false);
+      aiTimerRef.current = null;
+    }, 680);
+  };
+
+  useEffect(() => {
+    if (!autoPromoteEnabled || primaryPriority || !aiCandidate) {
+      if (aiTimerRef.current !== null) {
+        window.clearTimeout(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+      if (isAiAnalyzing) setIsAiAnalyzing(false);
+      return;
+    }
+
+    if (isAiAnalyzing || aiTimerRef.current !== null) return;
+
+    const candidate = aiCandidate;
+    setIsAiAnalyzing(true);
+    aiTimerRef.current = window.setTimeout(() => {
+      onPromoteSchedule(candidate, 'ai');
+      setFocusTab('priority');
+      setIsAiAnalyzing(false);
+      aiTimerRef.current = null;
+    }, 1100);
+  }, [aiCandidate, autoPromoteEnabled, isAiAnalyzing, onPromoteSchedule, primaryPriority]);
+
+  const handleManualPromotion = (item: WorkbenchScheduleItem) => {
+    if (promotedScheduleIds.has(item.id)) return;
+    onPromoteSchedule(item, 'manual');
+    setFocusTab('priority');
+  };
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (!isSectionId(activeId) || !isSectionId(overId) || activeId === overId) return;
+
+    const sourceIndex = sectionOrder.indexOf(activeId);
+    const targetIndex = sectionOrder.indexOf(overId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    onSectionOrderChange(arrayMove(sectionOrder, sourceIndex, targetIndex) as WorkbenchSectionId[]);
+  };
+
+  const renderPriorityContent = () => {
+    if (!primaryPriority) {
+      return (
+        <div className="border-t border-[#f0f3f9] px-4 py-4">
+          <div className="rounded-xl border border-[#dce9f7] bg-[#f8fbff] p-3.5">
+            <div className="flex items-start gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1a6fd4]">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <strong className="block text-[13px] text-slate-800">{currentAccount.workbenchEmptyStateTitle || '最紧急事项已清空'}</strong>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#5a6a88]">{currentAccount.workbenchEmptyStateDescription || '可从今日行程补充下一件最值得优先推进的事情。'}</p>
+              </div>
+            </div>
+
+            {currentAccount.workbenchAutoPromoteUseCase && (
+              <p className="mt-3 border-l-2 border-[#b9d7f3] pl-2.5 text-[10px] leading-relaxed text-[#5a6a88]">
+                当前场景：{currentAccount.workbenchAutoPromoteUseCase}
+              </p>
+            )}
+
+            {isAiAnalyzing ? (
+              <div role="status" className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#1a6fd4]">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1a6fd4] animate-pulse" />
+                正在评估下一件：优先级 → 时效 → 客户影响
+              </div>
+            ) : aiCandidate && !autoPromoteEnabled ? (
+              <button
+                onClick={handleAiPromotion}
+                className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1a6fd4] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#155caf] cursor-pointer"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                推荐下一件
+              </button>
+            ) : aiCandidate ? (
+              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">已开启自动补位，将从今日行程推荐下一件</p>
+            ) : (
+              <p className="mt-3 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#8a9ab8]">今日行程暂无可转入的待办事项</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const primaryTone = urgencyTone[primaryPriority.urgency];
+    return (
+      <div className="divide-y divide-[#f0f3f9] border-t border-[#f0f3f9]">
+        <div className="flex gap-3 px-4 py-3.5">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a6fd4] text-[11px] font-bold text-white">1</span>
+          <button onClick={() => handlePriorityAction(primaryPriority)} className="min-w-0 flex-1 text-left cursor-pointer">
+            <span className={`flex items-center gap-1.5 text-[11px] font-medium ${primaryTone.text}`}>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${primaryTone.dot}`} />
+              {primaryTone.label}
+              {primaryPriority.source && (
+                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-[#1a6fd4]">
+                  {primaryPriority.source === 'ai' ? 'AI 转入' : '手工置顶'}
+                </span>
+              )}
+            </span>
+            <strong className="mt-1 block truncate text-[14px] text-slate-900">{primaryPriority.subject}</strong>
+            <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{primaryPriority.title} · {primaryPriority.description}</span>
+          </button>
+          <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+            <span className="text-[10px] text-slate-400">{primaryPriority.dueLabel}</span>
+            <button onClick={() => handlePriorityAction(primaryPriority)} className="rounded-lg bg-[#1a6fd4] px-2.5 py-1.5 text-[11px] font-semibold text-white cursor-pointer transition-colors hover:bg-[#155caf]">
+              {primaryPriority.actionLabel}
+            </button>
+          </div>
+        </div>
+
+        {followingPriorities.map((priority, index) => {
+          const tone = urgencyTone[priority.urgency];
+          return (
+            <button key={priority.id} onClick={() => handlePriorityAction(priority)} className="flex w-full items-center gap-3 px-4 py-3 text-left cursor-pointer hover:bg-blue-50/40">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#1a6fd4]">{index + 2}</span>
+              <span className="min-w-0 flex-1">
+                <span className={`flex items-center gap-1.5 text-[10px] font-medium ${tone.text}`}>
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
+                  {tone.label}
+                  {priority.source && <span className="text-[#1a6fd4]">{priority.source === 'ai' ? 'AI 转入' : '手工置顶'}</span>}
+                </span>
+                <strong className="mt-0.5 block truncate text-[13px] text-slate-800">{priority.subject}</strong>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">{priority.dueLabel}<ChevronRight className="h-3.5 w-3.5 text-[#1a6fd4]" /></span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderScheduleContent = () => (
+    <div className="border-t border-[#f0f3f9] px-5">
+      {activeSchedule.length === 0 ? (
+        <p className="py-5 text-center text-[12px] text-[#8a9ab8]">今日行程已全部完成</p>
+      ) : activeSchedule.map((item) => {
+        const tone = urgencyTone[item.urgency];
+        const isPromoted = promotedScheduleIds.has(item.id);
+        return (
+          <div key={item.id} className="flex gap-3 border-b border-[#f0f3f9] py-3 last:border-0">
+            <button onClick={() => handleScheduleAction(item)} className="flex min-w-0 flex-1 items-start gap-3 text-left cursor-pointer">
+              <span className="w-9 shrink-0 pt-0.5 text-[13px] font-bold text-slate-800">{item.time}</span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+                  <strong className="truncate text-[13px] text-slate-800">{item.title}</strong>
+                </span>
+                <span className="mt-1 block truncate text-[12px] text-slate-600">{item.subject}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-slate-400">{item.description}</span>
+              </span>
+            </button>
+            <div className="flex shrink-0 flex-col items-end justify-between gap-2 py-0.5">
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-[#1a6fd4]">{item.status}</span>
+              <button
+                onClick={() => handleManualPromotion(item)}
+                disabled={isPromoted}
+                className="text-[10px] font-medium text-[#1a6fd4] cursor-pointer disabled:cursor-default disabled:text-[#aab8cd]"
+              >
+                {isPromoted ? '已转入' : '设为最紧急'}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderFocus = () => (
+    <section className="crm-card overflow-hidden">
+      <div className="px-5 pr-16 pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-medium text-[#1a6fd4]">{currentAccount.roleTitle} · 行动优先</p>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autoPromoteEnabled}
+            aria-label="自动补位：紧急事项为空时，从今日行程推荐下一件"
+            onClick={() => onAutoPromoteEnabledChange(!autoPromoteEnabled)}
+            className="flex h-7 shrink-0 items-center gap-1.5 text-[10px] font-medium text-[#5a6a88] cursor-pointer"
+          >
+            自动补位
+            <span className={`relative h-4 w-7 rounded-full transition-colors ${autoPromoteEnabled ? 'bg-[#1a6fd4]' : 'bg-[#c7d2e2]'}`}>
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left,right] ${autoPromoteEnabled ? 'right-0.5' : 'left-0.5'}`} />
+            </span>
+          </button>
+        </div>
+        <div className="mt-1.5 flex items-end gap-5 border-b border-[#f0f3f9]" role="tablist" aria-label="关键行动">
+          <button
+            role="tab"
+            aria-selected={focusTab === 'priority'}
+            onClick={() => setFocusTab('priority')}
+            className={`relative h-8 border-b-2 text-[14px] font-semibold transition-colors cursor-pointer ${focusTab === 'priority' ? 'border-[#1a6fd4] text-slate-900' : 'border-transparent text-[#8a9ab8] hover:text-[#5a6a88]'}`}
+          >
+            最紧急的事
+          </button>
+          <button
+            role="tab"
+            aria-selected={focusTab === 'schedule'}
+            onClick={() => setFocusTab('schedule')}
+            className={`relative h-8 border-b-2 text-[14px] font-semibold transition-colors cursor-pointer ${focusTab === 'schedule' ? 'border-[#1a6fd4] text-slate-900' : 'border-transparent text-[#8a9ab8] hover:text-[#5a6a88]'}`}
+          >
+            今日行程{activeSchedule.length > 0 ? ` · ${activeSchedule.length}` : ''}
+          </button>
+        </div>
+      </div>
+      {focusTab === 'priority' ? renderPriorityContent() : renderScheduleContent()}
+    </section>
+  );
+
+  const renderPulse = () => (
+    <section className="crm-card overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-5 pr-16 pt-4">
+        <div>
+          <h2 className="text-[16px] font-bold text-slate-900">今日经营脉搏</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">两个结果指标，加一条最需要决策的经营信号</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1 border-t border-[#f0f3f9] px-4 py-4">
+        {currentAccount.workbenchMetrics.slice(0, 2).map((metric) => (
+          <button
+            key={metric.label}
+            onClick={() => metric.targetTab && onNavigateToTab(metric.targetTab)}
+            className="min-w-0 text-center cursor-pointer active:scale-95 transition-transform"
+          >
+            <span className="block truncate text-[11px] text-slate-400">{metric.label}</span>
+            <strong className="mt-1.5 block truncate text-[22px] leading-none font-bold text-slate-900">{metric.value}</strong>
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={() => currentAccount.workbenchInsight.targetTab && onNavigateToTab(currentAccount.workbenchInsight.targetTab)}
+        className="flex w-full items-start gap-3 border-t border-[#f0f3f9] bg-[#f8fbff] px-5 py-3.5 text-left cursor-pointer hover:bg-blue-50/50"
+      >
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1a6fd4]"><Sparkles className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-medium text-[#1a6fd4]">{currentAccount.workbenchInsight.eyebrow}</span>
+          <strong className="mt-0.5 block text-[12px] text-slate-800">{currentAccount.workbenchInsight.title}</strong>
+          <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{currentAccount.workbenchInsight.description}</span>
+        </span>
+        <span className="self-center shrink-0 text-[11px] font-medium text-[#1a6fd4]">{currentAccount.workbenchInsight.actionLabel}</span>
+      </button>
+    </section>
+  );
+
+  const renderTools = () => (
+    <section className="crm-card">
+      <div className="px-5 pr-16 pt-4 pb-3">
+        <div>
+          <h2 className="text-[16px] font-bold text-slate-900">常用工具</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">来自应用中心，仅保留当前角色的高频动作</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 border-t border-[#f0f3f9]">
+        {quickTools.map((tool) => {
+          const Icon = getAppToolIcon(tool.iconName);
+          return (
+            <button key={tool.id} onClick={() => handleToolLaunch(tool)} className="flex flex-col items-center gap-2 py-4 cursor-pointer hover:bg-blue-50/40">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#1a6fd4]"><Icon className="h-5 w-5" /></span>
+              <span className="max-w-[70px] truncate text-[11px] font-medium text-slate-700">{tool.quickLabel}</span>
+            </button>
+          );
+        })}
+        {quickTools.length < 4 && (
+          <button onClick={onOpenAppCenter} className="flex flex-col items-center gap-2 py-4 cursor-pointer hover:bg-blue-50/40">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-dashed border-[#b9d0ee] bg-[#f8fbff] text-[#1a6fd4]"><Plus className="h-5 w-5" /></span>
+            <span className="text-[11px] font-medium text-[#5a6a88]">添加应用</span>
+          </button>
+        )}
+      </div>
+    </section>
+  );
+
+  const panels: Record<WorkbenchSectionId, React.ReactNode> = {
+    focus: renderFocus(),
+    pulse: renderPulse(),
+    tools: renderTools(),
+  };
 
   return (
-    <main className="crm-page space-y-3.5 select-none">
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-4">
-          <div className="flex gap-6">
-            {['线索', '试驾', '订单'].map((item) => {
-              const isActive = activeMetric === item;
-              return (
-                <button
-                  key={item}
-                  onClick={() => setActiveMetric(item)}
-                  className={`relative pb-2.5 text-[16px] transition-colors cursor-pointer ${
-                    isActive ? 'text-[#1a6fd4] font-bold' : 'text-slate-400 font-medium'
-                  }`}
-                >
-                  {item}
-                  {isActive && <span className="absolute inset-x-0 bottom-0 h-[3px] rounded-full bg-[#1a6fd4]" />}
-                </button>
-              );
-            })}
-          </div>
-          <button className="flex items-center gap-0.5 text-[13px] text-slate-400 cursor-pointer">
-            今日 <ChevronDown className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-4 gap-1 px-4 py-4">
-          {currentAccount.workbenchMetrics.slice(0, 4).map((metric) => (
-            <button
-              key={metric.label}
-              onClick={() => metric.targetTab && onNavigateToTab(metric.targetTab)}
-              className="min-w-0 text-center cursor-pointer active:scale-95 transition-transform"
-            >
-              <span className="block truncate text-[12px] text-slate-400">{metric.label}</span>
-              <strong className="mt-1.5 block text-[26px] leading-none font-bold text-slate-900">{metric.value}</strong>
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={() => onNavigateToTab(activeMetric === '试驾' ? 'testdrive' : activeMetric === '订单' ? 'orders' : 'clients')}
-          className="w-full border-t border-[#f0f3f9] py-2.5 text-[13px] text-slate-500 cursor-pointer hover:text-[#1a6fd4]"
-        >
-          查看全部数据 <span className="ml-0.5 text-[#1a6fd4]">›</span>
-        </button>
-      </section>
-
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-[18px] pb-3.5">
-          <div>
-            <h2 className="text-[18px] font-bold text-slate-900">今日待办</h2>
-            <p className="mt-0.5 text-[12px] text-slate-400">{currentAccount.workbenchTitle} · 工作节奏总览</p>
-          </div>
-          <button
-            onClick={() => onNavigateToTab('testdrive')}
-            className="text-[14px] font-medium text-[#1a6fd4] cursor-pointer"
-          >
-            查看任务
-          </button>
-        </div>
-
-        <div className="px-5 pb-4">
-          <div className="flex items-center gap-3 border-b border-[#f0f3f9] pb-4">
-            <svg className="shrink-0" width="76" height="76" viewBox="0 0 76 76" aria-label="任务完成进度">
-              <circle cx="38" cy="38" r="30" fill="none" stroke="#ddeeff" strokeWidth="7" />
-              <circle
-                cx="38"
-                cy="38"
-                r="30"
-                fill="none"
-                stroke="#1a6fd4"
-                strokeWidth="7"
-                strokeDasharray={`${2 * Math.PI * 30}`}
-                strokeDashoffset={`${2 * Math.PI * 30 * 0.7}`}
-                strokeLinecap="round"
-                transform="rotate(-90 38 38)"
-              />
-              <text x="38" y="43" textAnchor="middle" fill="#1a6fd4" fontSize="14" fontWeight="700">30%</text>
-            </svg>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-700">
-                <CheckSquare className="h-4.5 w-4.5 text-slate-600" /> 任务总量
-              </div>
-              <div className="mt-2 flex gap-9">
-                <div>
-                  <strong className="text-[28px] leading-none text-slate-900">{taskActions.reduce((total, task) => total + task.value, 0)}</strong>
-                  <span className="mt-1 block text-[12px] text-slate-400">待完成</span>
-                </div>
-                <div>
-                  <strong className="text-[28px] leading-none text-slate-900">4</strong>
-                  <span className="mt-1 block text-[12px] text-slate-400">已完成</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2">
-          {taskActions.map((task, index) => {
-            const Icon = task.icon;
-            return (
-              <button
-                key={task.label}
-                onClick={() => onNavigateToTab(task.label === '试驾跟进' ? 'testdrive' : 'clients')}
-                className={`p-4 text-left cursor-pointer hover:bg-blue-50/40 transition-colors ${
-                  index % 2 === 0 ? 'border-r border-[#f0f3f9]' : ''
-                } ${index < 2 ? 'border-b border-[#f0f3f9]' : ''}`}
-              >
-                <span className="flex items-center gap-2 text-[14px] font-medium text-slate-700">
-                  <Icon className="h-[18px] w-[18px] text-slate-600" /> {task.label}
-                </span>
-                <span className="mt-3 block h-[3px] rounded-full bg-[linear-gradient(90deg,#1a6fd4_0%,#c8daf5_60%,#edf2fb_100%)]" />
-                <span className="mt-2 block text-[12px] text-slate-400"><b className="text-[15px] text-slate-900">{task.value}</b> 待完成</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {urgentLeads.length > 0 && (
-        <section className="crm-card border-rose-100">
-          <div className="flex items-center justify-between px-5 pt-4 pb-2">
-            <div className="flex items-center gap-2 text-[14px] font-bold text-slate-800">
-              <span className="h-2 w-2 rounded-full bg-[#e84040] animate-pulse" />
-              优先跟进
-            </div>
-            <span className="text-[12px] text-[#e84040]">{urgentLeads.length} 位待处理</span>
-          </div>
-          <div className="px-4 pb-3 space-y-2">
-            {urgentLeads.slice(0, 2).map((lead) => (
-              <div key={lead.id} className="crm-card-subtle flex items-center justify-between gap-2 p-3 bg-[#fffafb]">
-                <button onClick={() => onSelectClient(lead)} className="min-w-0 text-left cursor-pointer">
-                  <strong className="block truncate text-[13px] text-slate-900">{lead.name} · {lead.intentCar}</strong>
-                  <span className="mt-1 block truncate text-[11px] text-slate-500">{lead.channelOrigin.campaign} · 需要尽快响应</span>
-                </button>
-                <div className="flex shrink-0 gap-1.5">
-                  <a
-                    href={`https://wa.me/${lead.countryCode}${lead.phone}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg border border-blue-100 bg-white p-2 text-[#1a6fd4]"
-                    aria-label={`联系 ${lead.name}`}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </a>
-                  <a href={`tel:${lead.phone}`} className="rounded-lg bg-[#1a6fd4] p-2 text-white" aria-label={`拨打 ${lead.name}`}>
-                    <PhoneCall className="h-3.5 w-3.5" />
-                  </a>
-                </div>
-              </div>
+    <main className="crm-page select-none" aria-label="工作台">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3.5">
+            {sectionOrder.map((sectionId) => (
+              <SortableWorkbenchPanel key={sectionId} id={sectionId}>
+                {panels[sectionId]}
+              </SortableWorkbenchPanel>
             ))}
           </div>
-        </section>
-      )}
-
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-4 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#1a6fd4]"><Zap className="h-4 w-4" /></span>
-            <div>
-              <h2 className="text-[16px] font-bold text-slate-900">下一步最佳行动</h2>
-              <p className="text-[11px] text-slate-400">系统按客户意向与时间优先级排序</p>
-            </div>
-          </div>
-          <span className="text-[11px] text-slate-400">距开始 28 min</span>
-        </div>
-
-        <div className="mx-4 rounded-xl border border-[#dceaf9] bg-[#f8fbff] p-3.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="truncate text-[14px] font-bold text-slate-900">{nextDrive.timeSlot} {nextDrive.clientName} · 预约试驾</h3>
-              <p className="mt-1 truncate text-[12px] text-slate-600">试驾车型：{nextDrive.carModel}</p>
-            </div>
-            <span className="shrink-0 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-semibold text-[#1a6fd4]">{nextDrive.status}</span>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => setNextTaskStatus('received')}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[12px] font-semibold text-white cursor-pointer ${
-                nextTaskStatus === 'received' ? 'bg-emerald-600' : 'bg-[#1a6fd4] hover:bg-[#155caf]'
-              }`}
-            >
-              <CheckCircle2 className="h-4 w-4" /> {nextTaskStatus === 'received' ? '试驾接待中' : '开始试驾接待'}
-            </button>
-            <button onClick={() => onNavigateToTab('testdrive')} className="rounded-lg border border-[#c6def8] bg-white px-3 text-[12px] font-semibold text-[#1a6fd4] cursor-pointer">
-              查看排期
-            </button>
-          </div>
-        </div>
-
-        <div className="px-4 py-3">
-          {mockTestDrives.slice(1, 3).map((drive) => (
-            <button key={drive.id} onClick={() => onNavigateToTab('testdrive')} className="flex w-full items-center justify-between py-2 text-left cursor-pointer border-b last:border-0 border-[#f0f3f9]">
-              <span className="flex min-w-0 items-center gap-2"><Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" /><b className="shrink-0 text-[12px] text-slate-700">{drive.timeSlot}</b><span className="truncate text-[12px] text-slate-500">{drive.clientName} · {drive.carModel}</span></span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[#1a6fd4]" />
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-4 pb-3">
-          <div>
-            <h2 className="text-[16px] font-bold text-slate-900">转化进度</h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">点击阶段快速进入客户筛选</p>
-          </div>
-          <Sparkles className="h-4 w-4 text-[#1a6fd4]" />
-        </div>
-        <div className="grid grid-cols-3 gap-px border-y border-[#eef3f9] bg-[#eef3f9]">
-          {pipelineSteps.map((step) => {
-            const selected = activePipelineStage === step.id;
-            return (
-              <button
-                key={step.id}
-                onClick={() => { setActivePipelineStage(step.id); onNavigateToTab(step.tab); }}
-                className={`bg-white px-2 py-3 text-center cursor-pointer transition-colors ${selected ? 'bg-[#f7fbff]' : 'hover:bg-[#f7fbff]'}`}
-              >
-                <span className={`block text-[11px] ${selected ? 'font-semibold text-[#1a6fd4]' : 'text-slate-500'}`}>{step.label}</span>
-                <strong className="mt-1 block text-[20px] leading-none text-slate-900">{step.count}</strong>
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={() => onNavigateToTab('clients')} className="flex w-full items-center justify-between px-5 py-3 text-left cursor-pointer">
-          <span className="text-[12px] text-slate-500">5 位客户已达到报价节点，建议今日推进</span>
-          <span className="shrink-0 text-[12px] font-medium text-[#1a6fd4]">一键跟进</span>
-        </button>
-      </section>
-
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-4 pb-3">
-          <h2 className="text-[16px] font-bold text-slate-900">常用工具</h2>
-          <button onClick={onOpenAppCenter} className="flex items-center text-[13px] text-[#1a6fd4] cursor-pointer">全部应用 <ChevronRight className="h-4 w-4" /></button>
-        </div>
-        <div className="grid grid-cols-4 border-t border-[#f0f3f9]">
-          {[
-            { label: '开立报价', icon: Calculator, action: () => onOpenQuoteBuilder(mockClients[0]) },
-            { label: '预约试驾', icon: Car, action: () => onNavigateToTab('testdrive') },
-            { label: '客户 360', icon: Users, action: () => onNavigateToTab('clients') },
-            { label: 'VIN 雷达', icon: QrCode, action: onOpenAppCenter },
-          ].map((tool) => {
-            const Icon = tool.icon;
-            return (
-              <button key={tool.label} onClick={tool.action} className="flex flex-col items-center gap-2 py-4 cursor-pointer hover:bg-blue-50/40">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#1a6fd4]"><Icon className="h-5 w-5" /></span>
-                <span className="text-[11px] font-medium text-slate-700 whitespace-nowrap">{tool.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="crm-card">
-        <div className="flex items-center justify-between px-5 pt-4 pb-3">
-          <div className="flex items-center gap-2"><Car className="h-4 w-4 text-[#1a6fd4]" /><h2 className="text-[16px] font-bold text-slate-900">成交资源</h2></div>
-          <span className="text-[11px] text-slate-400">DMS 实时</span>
-        </div>
-        <div className="space-y-2 px-4 pb-4">
-          {mockVehicles.map((vehicle) => (
-            <div key={vehicle.vin} className="crm-card-subtle p-3">
-              <div className="flex items-center justify-between gap-2"><strong className="truncate text-[12px] text-slate-900">{vehicle.modelName}</strong><span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-[#1a6fd4]">{vehicle.locationStatus}</span></div>
-              <p className="mt-1 truncate text-[11px] text-slate-600">{vehicle.configTrim} · {vehicle.colorExterior}/{vehicle.colorInterior}</p>
-              <div className="mt-1 flex justify-between gap-2 text-[10px] text-slate-400"><span className="truncate">{vehicle.vin}</span><b className="shrink-0 text-slate-700">{vehicle.currency}{vehicle.msrp.toLocaleString()}</b></div>
-            </div>
-          ))}
-        </div>
-      </section>
+        </SortableContext>
+      </DndContext>
     </main>
   );
 };
