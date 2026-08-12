@@ -4,6 +4,12 @@ export const MAX_QUICK_TOOLS = 4;
 
 export const DEFAULT_WORKBENCH_SECTION_ORDER: WorkbenchSectionId[] = [
   'focus',
+  'tools',
+  'pulse',
+];
+
+const PREVIOUS_DEFAULT_WORKBENCH_SECTION_ORDER: WorkbenchSectionId[] = [
+  'focus',
   'pulse',
   'tools',
 ];
@@ -23,7 +29,12 @@ const normalizeSectionOrder = (value: unknown): WorkbenchSectionId[] => {
 
   const candidate = raw.filter(isSectionId);
   const unique = [...new Set(candidate)];
-  return [...unique, ...DEFAULT_WORKBENCH_SECTION_ORDER.filter((section) => !unique.includes(section))];
+  const normalized = [...unique, ...DEFAULT_WORKBENCH_SECTION_ORDER.filter((section) => !unique.includes(section))];
+
+  // Move only users who still have the former default to the new recommended layout.
+  // Any layout they have intentionally rearranged remains untouched.
+  const isPreviousDefault = normalized.every((section, index) => section === PREVIOUS_DEFAULT_WORKBENCH_SECTION_ORDER[index]);
+  return isPreviousDefault ? [...DEFAULT_WORKBENCH_SECTION_ORDER] : normalized;
 };
 
 const normalizeQuickToolIds = (value: unknown, availableToolIds: string[], defaults: string[]): string[] => {

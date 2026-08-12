@@ -81,7 +81,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
                 {roleTitle}可用
               </span>
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">选择常用应用，工作台最多保留 {MAX_QUICK_TOOLS} 个</p>
+            <p className="text-xs text-gray-400 mt-0.5">选择工作必备应用，工作台最多保留 {MAX_QUICK_TOOLS} 个</p>
           </div>
           <button
             onClick={onClose}
@@ -126,7 +126,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
                         event.stopPropagation();
                         if (!isAtLimit) onTogglePinnedTool(tool.id);
                       }}
-                      aria-label={isPinned ? `从常用工具移除${tool.name}` : `添加${tool.name}到常用工具`}
+                      aria-label={isPinned ? `从工作必备移除${tool.name}` : `添加${tool.name}到工作必备`}
                       aria-pressed={isPinned}
                       disabled={isAtLimit}
                       className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-semibold transition-colors cursor-pointer ${
@@ -138,7 +138,7 @@ export const AppCenterModal: React.FC<AppCenterModalProps> = ({
                       }`}
                     >
                       {isPinned ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                      <span>{isPinned ? '常用' : '添加'}</span>
+                      <span>{isPinned ? '已选' : '添加'}</span>
                     </button>
                   </div>
                   <div>

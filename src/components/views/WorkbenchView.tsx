@@ -64,8 +64,8 @@ const urgencyWeight: Record<WorkbenchPriority['urgency'], number> = {
 
 const sectionLabels: Record<WorkbenchSectionId, string> = {
   focus: '最紧急的事与今日行程',
-  pulse: '今日经营脉搏',
-  tools: '常用工具',
+  pulse: '经营概览',
+  tools: '工作必备',
 };
 
 const isSectionId = (value: string | undefined): value is WorkbenchSectionId =>
@@ -292,7 +292,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                 推荐下一件
               </button>
             ) : aiCandidate ? (
-              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">已开启自动补位，将从今日行程推荐下一件</p>
+              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">已开启自动转入，将从今日行程推荐下一件</p>
             ) : (
               <p className="mt-3 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#8a9ab8]">今日行程暂无可转入的待办事项</p>
             )}
@@ -388,16 +388,16 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     <section className="crm-card overflow-hidden">
       <div className="px-5 pr-16 pt-4">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] font-medium text-[#1a6fd4]">{currentAccount.roleTitle} · 行动优先</p>
+          <p className="text-[11px] font-medium text-[#1a6fd4]">{currentAccount.roleTitle}</p>
           <button
             type="button"
             role="switch"
             aria-checked={autoPromoteEnabled}
-            aria-label="自动补位：紧急事项为空时，从今日行程推荐下一件"
+            aria-label="自动转入：紧急事项为空时，将今日行程推荐事项转入最紧急的事"
             onClick={() => onAutoPromoteEnabledChange(!autoPromoteEnabled)}
             className="flex h-7 shrink-0 items-center gap-1.5 text-[10px] font-medium text-[#5a6a88] cursor-pointer"
           >
-            自动补位
+            自动转入
             <span className={`relative h-4 w-7 rounded-full transition-colors ${autoPromoteEnabled ? 'bg-[#1a6fd4]' : 'bg-[#c7d2e2]'}`}>
               <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left,right] ${autoPromoteEnabled ? 'right-0.5' : 'left-0.5'}`} />
             </span>
@@ -430,7 +430,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     <section className="crm-card overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-5 pr-16 pt-4">
         <div>
-          <h2 className="text-[16px] font-bold text-slate-900">今日经营脉搏</h2>
+          <h2 className="text-[16px] font-bold text-slate-900">经营概览</h2>
           <p className="mt-0.5 text-[11px] text-slate-400">两个结果指标，加一条最需要决策的经营信号</p>
         </div>
       </div>
@@ -467,7 +467,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     <section className="crm-card">
       <div className="px-5 pr-16 pt-4 pb-3">
         <div>
-          <h2 className="text-[16px] font-bold text-slate-900">常用工具</h2>
+          <h2 className="text-[16px] font-bold text-slate-900">工作必备</h2>
           <p className="mt-0.5 text-[11px] text-slate-400">来自应用中心，仅保留当前角色的高频动作</p>
         </div>
       </div>

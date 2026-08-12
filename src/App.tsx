@@ -132,7 +132,7 @@ export default function App() {
   const handleQuickToolToggle = (toolId: string) => {
     const isPinned = workbenchPreferences.quickToolIds.includes(toolId);
     if (!isPinned && workbenchPreferences.quickToolIds.length >= MAX_QUICK_TOOLS) {
-      showToast(`常用工具最多保留 ${MAX_QUICK_TOOLS} 个，请先移除一个`);
+      showToast(`工作必备最多保留 ${MAX_QUICK_TOOLS} 个，请先移除一个`);
       return;
     }
 
@@ -142,7 +142,7 @@ export default function App() {
 
     updateWorkbenchPreferences({ ...workbenchPreferences, quickToolIds });
     const tool = availableTools.find((item) => item.id === toolId);
-    showToast(isPinned ? `已从常用工具移除：${tool?.quickLabel || '应用'}` : `已添加到常用工具：${tool?.quickLabel || '应用'}`);
+    showToast(isPinned ? `已从工作必备移除：${tool?.quickLabel || '应用'}` : `已添加到工作必备：${tool?.quickLabel || '应用'}`);
   };
 
   const handleSectionOrderChange = (sectionOrder: WorkbenchSectionId[]) => {
@@ -151,7 +151,7 @@ export default function App() {
 
   const handleAutoPromoteEnabledChange = (autoPromoteEnabled: boolean) => {
     updateWorkbenchPreferences({ ...workbenchPreferences, autoPromoteEnabled });
-    showToast(autoPromoteEnabled ? '已开启自动补位' : '已关闭自动补位');
+    showToast(autoPromoteEnabled ? '已开启自动转入' : '已关闭自动转入');
   };
 
   const handlePromoteSchedule = (item: WorkbenchScheduleItem, source: 'ai' | 'manual') => {
