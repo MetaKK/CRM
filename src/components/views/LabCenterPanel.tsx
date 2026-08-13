@@ -74,7 +74,7 @@ export const LabCenterPanel: React.FC<LabCenterPanelProps> = ({
     return (
       <section className="bg-white px-4 pb-8 pt-4">
         <button type="button" onClick={() => setSelectedToolId(null)} className="flex min-h-9 items-center gap-1 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer">
-          <ArrowLeft className="h-4 w-4" />返回一线 Lab
+          <ArrowLeft className="h-4 w-4" />返回应用Lab
         </button>
         <article className="crm-card mt-3 p-4">
           <div className="flex items-start gap-3">
@@ -107,7 +107,7 @@ export const LabCenterPanel: React.FC<LabCenterPanelProps> = ({
     <>
       <section className="bg-white px-4 pt-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[18px] font-extrabold tracking-tight text-[#1a2438]">一线 Lab</h2><LabBadge /></div><p className="mt-1 text-[10px] leading-relaxed text-[#5a6a88]">把一线工作方法做成小工具，先在可控范围验证，再决定是否进入日常应用。</p></div>
+          <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[18px] font-extrabold tracking-tight text-[#1a2438]">应用Lab</h2><LabBadge /></div><p className="mt-1 text-[10px] leading-relaxed text-[#5a6a88]">把一线工作方法做成小工具，先在可控范围验证，再决定是否进入日常应用。</p></div>
           <button type="button" onClick={openSubmission} className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-[#1a6fd4] px-2 text-[10px] font-semibold text-[#1a6fd4] hover:bg-blue-50 cursor-pointer"><Code2 className="h-3.5 w-3.5" />提交工具</button>
         </div>
         <div className="mt-3 rounded-xl border border-[#dce9f7] bg-[#f8fbff] px-3 py-2.5 text-[9px] leading-relaxed text-[#5a6a88]"><strong className="text-[#1a6fd4]">晋级路径：</strong>员工支持 ≥300、连续 14 天稳定运行、通过代码与数据安全审核后，才进入常规应用评估。点赞不等同审批。</div>

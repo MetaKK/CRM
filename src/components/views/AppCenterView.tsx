@@ -48,7 +48,7 @@ const categoryOrder: AppTool['category'][] = [
 
 const categoryLabels: Record<AppCenterCategory, string> = {
   recent: '最近使用',
-  lab: '一线 Lab',
+  lab: '应用Lab',
   销售工具: '销售工具',
   客户管理: '客户管理',
   数据分析: '数据分析',
@@ -315,7 +315,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
             const isActive = activeCategory === category;
             return <button key={category} type="button" onClick={() => { selectCategory(category); setIsCategoryOpen(false); }} className={`min-h-20 rounded-xl border px-3 text-left transition-colors cursor-pointer ${isActive ? 'border-blue-200 bg-blue-50 text-[#1a6fd4]' : 'border-[#eaf0f7] bg-[#f8fbff] text-[#3a4a68] hover:border-blue-100 hover:bg-blue-50/50'}`}><span className="block text-[13px] font-bold">{categoryLabels[category]}</span><span className="mt-1 block text-[10px] opacity-70">{count} 个应用</span></button>;
           })}</div>
-          <p className="border-t border-[#eaf0f7] pt-4 text-[10px] leading-relaxed text-[#8a9ab8]">分类只显示当前角色可访问的正式应用；一线 Lab 独立呈现，实验工具不等同于已获支持的正式应用。</p>
+          <p className="border-t border-[#eaf0f7] pt-4 text-[10px] leading-relaxed text-[#8a9ab8]">分类只显示当前角色可访问的正式应用；应用Lab独立呈现，实验工具不等同于已获支持的正式应用。</p>
         </section>
       </div>}
     </div>
