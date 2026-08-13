@@ -485,27 +485,39 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const renderTools = () => (
     <section className="crm-card">
       <div className="px-5 pr-16 pt-4 pb-3">
-        <div>
-          <h2 className="text-[16px] font-bold text-slate-900">工作必备</h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">来自应用中心，仅保留当前角色的高频动作</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[16px] font-bold text-slate-900">工作必备</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">{quickTools.length > 4 ? `已添加 ${quickTools.length} 个高频动作，左右滑动查看` : '来自应用中心，仅保留当前角色的高频动作'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAppCenter}
+            className="mt-0.5 shrink-0 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer"
+          >
+            管理
+          </button>
         </div>
       </div>
-      <div className="grid grid-cols-4 border-t border-[#f0f3f9]">
+      <div className="border-t border-[#f0f3f9]">
+        <div
+          className="flex snap-x snap-proximity gap-1 overflow-x-auto px-2 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label="工作必备，左右滑动查看更多应用"
+        >
         {quickTools.map((tool) => {
           const Icon = getAppToolIcon(tool.iconName);
           return (
-            <button key={tool.id} onClick={() => handleToolLaunch(tool)} className="flex flex-col items-center gap-2 py-4 cursor-pointer hover:bg-blue-50/40">
+            <button key={tool.id} onClick={() => handleToolLaunch(tool)} className="flex w-[72px] shrink-0 snap-start flex-col items-center gap-1.5 rounded-xl py-1.5 cursor-pointer hover:bg-blue-50/60">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#1a6fd4]"><Icon className="h-5 w-5" /></span>
-              <span className="max-w-[70px] truncate text-[11px] font-medium text-slate-700">{tool.quickLabel}</span>
+              <span className="max-w-[68px] truncate text-[11px] font-medium text-slate-700">{tool.quickLabel}</span>
             </button>
           );
         })}
-        {quickTools.length < 4 && (
-          <button onClick={onOpenAppCenter} className="flex flex-col items-center gap-2 py-4 cursor-pointer hover:bg-blue-50/40">
+          <button type="button" onClick={onOpenAppCenter} className="flex w-[72px] shrink-0 snap-start flex-col items-center gap-1.5 rounded-xl py-1.5 cursor-pointer hover:bg-blue-50/60">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-dashed border-[#b9d0ee] bg-[#f8fbff] text-[#1a6fd4]"><Plus className="h-5 w-5" /></span>
             <span className="text-[11px] font-medium text-[#5a6a88]">添加应用</span>
           </button>
-        )}
+        </div>
       </div>
     </section>
   );

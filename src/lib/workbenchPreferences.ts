@@ -1,6 +1,8 @@
 import { WorkbenchPreferences, WorkbenchSectionId } from '../types';
 
-export const MAX_QUICK_TOOLS = 4;
+// A workbench can hold a compact set of frequently used tools. Twelve keeps the
+// horizontal strip useful without turning the workbench into an app launcher.
+export const MAX_QUICK_TOOLS = 12;
 
 export const DEFAULT_WORKBENCH_SECTION_ORDER: WorkbenchSectionId[] = [
   'focus',

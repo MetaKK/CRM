@@ -60,7 +60,11 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
   onLaunchTool,
   onToolDetailOpen,
 }) => {
-  const [activeCategory, setActiveCategory] = useState<AppCenterCategory>('all');
+  const [activeCategory, setActiveCategory] = useState<AppCenterCategory>(() => (
+    recentToolIds.some((toolId) => tools.some((tool) => tool.id === toolId))
+      ? 'recent'
+      : categoryOrder.find((category) => tools.some((tool) => tool.category === category)) || 'recent'
+  ));
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState('');
@@ -74,6 +78,10 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
     return tool ? [tool] : [];
   });
   const availableCategories = categoryOrder.filter((category) => tools.some((tool) => tool.category === category));
+  const recentTools = useMemo(() => recentToolIds.flatMap((id) => {
+    const tool = toolById.get(id);
+    return tool ? [tool] : [];
+  }), [recentToolIds, toolById]);
 
   useEffect(() => {
     if (!initialToolId || initialDetailRef.current === initialToolId || !toolById.has(initialToolId)) return;
@@ -82,25 +90,31 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
     onToolDetailOpen?.();
   }, [initialToolId, onToolDetailOpen, toolById]);
 
+  useEffect(() => {
+    const fallbackCategory = recentTools.length ? 'recent' : availableCategories[0] || 'recent';
+    const categoryIsAvailable = activeCategory === 'all'
+      || activeCategory === 'recent'
+      || availableCategories.includes(activeCategory);
+    if (!categoryIsAvailable || (activeCategory === 'recent' && !recentTools.length)) {
+      setActiveCategory(fallbackCategory);
+    }
+  }, [activeCategory, availableCategories, recentTools.length]);
+
   const openToolDetail = (tool: AppTool) => {
     setSelectedToolId(tool.id);
     onToolDetailOpen?.();
   };
 
   const visibleTools = useMemo(() => {
-    const recent = recentToolIds.flatMap((id) => {
-      const tool = toolById.get(id);
-      return tool ? [tool] : [];
-    });
     const source = activeCategory === 'recent'
-      ? recent
+      ? recentTools
       : activeCategory === 'all'
         ? tools
         : tools.filter((tool) => tool.category === activeCategory);
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return source;
     return source.filter((tool) => `${tool.name} ${tool.quickLabel} ${tool.desc}`.toLocaleLowerCase().includes(normalizedQuery));
-  }, [activeCategory, query, recentToolIds, toolById, tools]);
+  }, [activeCategory, query, recentTools, tools]);
 
   const selectedTool = selectedToolId ? toolById.get(selectedToolId) : undefined;
   const isAtLimit = pinnedToolIds.length >= MAX_QUICK_TOOLS;
@@ -115,7 +129,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-1.5">
           <h2 className="text-[13px] font-bold text-[#1a2438]">工作必备</h2>
-          <span className="text-[10px] text-[#8a9ab8]">{pinnedTools.length}/{MAX_QUICK_TOOLS}</span>
+          <span className="text-[10px] text-[#8a9ab8]">{pinnedTools.length} 个</span>
         </div>
         <button
           type="button"
@@ -144,7 +158,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
             </div>
           );
         }) : (
-          <p className="text-[11px] text-[#8a9ab8]">从下方选择最多 {MAX_QUICK_TOOLS} 个高频应用</p>
+          <p className="text-[11px] text-[#8a9ab8]">从应用目录选择高频工具，最多保留 {MAX_QUICK_TOOLS} 个</p>
         )}
       </div>
       {isManaging && <p className="mt-2 text-[10px] text-[#5a6a88]">点击图标即可移除；移除后不会影响应用本身的数据与权限。</p>}
@@ -156,8 +170,8 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
       <section className="bg-white px-4 pt-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-[18px] font-extrabold tracking-tight text-[#1a2438]">全部应用</h2>
-            <p className="mt-0.5 text-[10px] text-[#8a9ab8]">仅展示 {roleTitle} 当前可用的业务工具</p>
+            <h2 className="text-[18px] font-extrabold tracking-tight text-[#1a2438]">应用目录</h2>
+            <p className="mt-0.5 text-[10px] text-[#8a9ab8]">{activeCategory === 'recent' ? '优先呈现你最近打开的业务工具' : `仅展示 ${roleTitle} 当前可用的业务工具`}</p>
           </div>
           <button type="button" onClick={() => setIsCategoryOpen(true)} className="flex h-8 items-center gap-1 rounded-lg px-1 text-[11px] font-semibold text-[#5a6a88] hover:text-[#1a6fd4] cursor-pointer" aria-haspopup="dialog">
             <LayoutGrid className="h-4 w-4" /> 分类
@@ -165,7 +179,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
         </div>
 
         <div className="mt-3 -mx-4 flex overflow-x-auto border-b border-[#eaf0f7] px-4" role="tablist" aria-label="应用分类">
-          {(['all', 'recent', ...availableCategories] as AppCenterCategory[]).map((category) => (
+          {(['recent', ...availableCategories] as AppCenterCategory[]).map((category) => (
             <button
               key={category}
               type="button"
@@ -213,7 +227,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
             <Search className="h-7 w-7 text-[#aab8cd]" />
             <strong className="mt-3 text-[13px] text-[#3a4a68]">{activeCategory === 'recent' ? '还没有最近使用的应用' : '没有匹配的应用'}</strong>
             <p className="mt-1 max-w-[250px] text-[10px] leading-relaxed text-[#8a9ab8]">{activeCategory === 'recent' ? '打开一个应用后会出现在这里，方便下次快速继续。' : '试试清除搜索词或切换其他应用分类。'}</p>
-            {activeCategory !== 'all' && <button type="button" onClick={() => { setActiveCategory('all'); setQuery(''); }} className="mt-3 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer">查看全部应用</button>}
+            {activeCategory !== 'all' && <button type="button" onClick={() => { setActiveCategory(availableCategories[0] || 'all'); setQuery(''); }} className="mt-3 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer">浏览可用应用</button>}
           </div>
         )}
       </section>
