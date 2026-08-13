@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   AdvisorProfile,
   AppTool,
+  FrontlineLabTool,
   MetricData,
   StoreOption,
   ClientRecord,
@@ -21,6 +22,7 @@ import {
   mockStores,
   mockClients,
   mockAppTools,
+  frontlineLabTools,
   mockRoleAccounts,
 } from './data/mockData';
 import {
@@ -29,6 +31,7 @@ import {
   saveWorkbenchPreferences,
 } from './lib/workbenchPreferences';
 import { readRecentAppToolIds, recordRecentAppToolId } from './lib/appCenterPreferences';
+import { readSupportedLabToolIds, toggleSupportedLabToolId } from './lib/labPreferences';
 import {
   getAnalyticsActorType,
   getAnalyticsJourney,
@@ -136,6 +139,9 @@ export default function App() {
   const [appCenterReturnTab, setAppCenterReturnTab] = useState<TabType>('workbench');
   const [recentAppToolIds, setRecentAppToolIds] = useState<string[]>(() =>
     readRecentAppToolIds('kian', getAvailableTools('kian').map((tool) => tool.id)),
+  );
+  const [supportedLabToolIds, setSupportedLabToolIds] = useState<string[]>(() =>
+    readSupportedLabToolIds(frontlineLabTools.map((tool) => tool.id)),
   );
   const [isCustomerServiceOpen, setIsCustomerServiceOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -310,6 +316,18 @@ export default function App() {
     showToast(`已为你打开：${tool.quickLabel}`);
   };
 
+  const handleLabToolSupport = (tool: FrontlineLabTool, nextSupported: boolean) => {
+    setSupportedLabToolIds(toggleSupportedLabToolId(tool.id, frontlineLabTools.map((item) => item.id)));
+    recordAnalytics(currentAccount, {
+      module: 'app_center',
+      action: 'lab_tool_supported',
+      status: nextSupported ? 'succeeded' : 'cancelled',
+      trustLevel: 'verified_behavior',
+      properties: { source: 'lab', toolType: 'lab_tool' },
+    });
+    showToast(nextSupported ? `已支持：${tool.quickLabel}` : `已取消支持：${tool.quickLabel}`);
+  };
+
   const openClient360 = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
     recordAnalytics(currentAccount, { module: 'client_360', action: 'client_opened', status: 'viewed', trustLevel: 'process_proxy', properties: { source } });
     setSelectedClient360(client);
@@ -432,8 +450,10 @@ export default function App() {
               <AppCenterView
                 roleTitle={currentAccount.roleTitle}
                 tools={availableTools}
+                labTools={frontlineLabTools}
                 pinnedToolIds={workbenchPreferences.quickToolIds}
                 recentToolIds={recentAppToolIds}
+                supportedLabToolIds={supportedLabToolIds}
                 initialToolId={appCenterInitialToolId}
                 onBack={() => {
                   setAppCenterInitialToolId(null);
@@ -442,6 +462,12 @@ export default function App() {
                 onTogglePinnedTool={handleQuickToolToggle}
                 onLaunchTool={(tool) => handleLaunchTool(tool, 'app_center')}
                 onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_detail_viewed', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'tool' } })}
+                onLabOpened={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'lab_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'app_center', target: 'lab', toolType: 'lab_tool' } })}
+                onLabToolViewed={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'lab_tool_viewed', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'lab', toolType: 'lab_tool' } })}
+                onLabToolSupportToggled={handleLabToolSupport}
+                onLabToolLaunched={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'lab_tool_launched', status: 'started', trustLevel: 'process_proxy', properties: { source: 'lab', toolType: 'lab_tool' } })}
+                onLabTutorialOpened={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'lab_tutorial_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'lab', toolType: 'lab_tool' } })}
+                onLabSubmissionStarted={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'lab_submission_started', status: 'started', trustLevel: 'process_proxy', properties: { source: 'lab', toolType: 'lab_tool' } })}
               />
             </motion.div>
           ) : activeTab === 'workbench' ? (

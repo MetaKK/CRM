@@ -142,6 +142,7 @@ const featureDefinitions = [
   { label: '工作台', matches: (event: ProductAnalyticsEvent) => event.module === 'workbench' },
   { label: '工作必备', matches: (event: ProductAnalyticsEvent) => event.module === 'work_essential' },
   { label: '应用中心', matches: (event: ProductAnalyticsEvent) => event.module === 'app_center' },
+  { label: '一线 Lab', matches: (event: ProductAnalyticsEvent) => event.properties?.toolType === 'lab_tool' },
   { label: '客户 360', matches: (event: ProductAnalyticsEvent) => event.module === 'client_360' },
   { label: '报价', matches: (event: ProductAnalyticsEvent) => event.module === 'quote' },
   { label: '试驾 / 订单', matches: (event: ProductAnalyticsEvent) => event.module === 'test_drive' || event.module === 'order_delivery' },
@@ -204,6 +205,15 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
       { id: 'add', matches: (event) => event.action === 'tool_configured' && event.properties?.configurationAction === 'add' },
       { id: 'launch', matches: (event) => event.action === 'tool_launched' },
     ]);
+    const lab = calculateOrderedFunnel(inCurrent, [
+      { id: 'open', matches: (event) => event.action === 'lab_opened' },
+      { id: 'detail', matches: (event) => event.action === 'lab_tool_viewed' },
+      { id: 'support', matches: (event) => event.action === 'lab_tool_supported' && event.status === 'succeeded' },
+    ]);
+    const labLearning = calculateOrderedFunnel(inCurrent, [
+      { id: 'tutorial', matches: (event) => event.action === 'lab_tutorial_opened' },
+      { id: 'review', matches: (event) => event.action === 'lab_submission_started' && event.status === 'started' },
+    ]);
     const personalization = sameBrowserReuse(inCurrent);
     const layoutReorderedSessions = new Set(inCurrent.filter((event) => event.action === 'layout_reordered').map((event) => event.anonymousSessionId)).size;
     const validSessionCount = effective.counts[1];
@@ -236,6 +246,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
       { id: 'launch', matches: (event) => event.action === 'tool_launched' },
     ]);
     const previousActivation = percent(previousAppCenter.counts[3], previousAppCenter.counts[0]);
+    const previousLab = calculateOrderedFunnel(inPrior, [
+      { id: 'open', matches: (event) => event.action === 'lab_opened' },
+      { id: 'detail', matches: (event) => event.action === 'lab_tool_viewed' },
+      { id: 'support', matches: (event) => event.action === 'lab_tool_supported' && event.status === 'succeeded' },
+    ]);
+    const labSupportRate = percent(lab.counts[2], lab.counts[1]);
+    const previousLabSupportRate = percent(previousLab.counts[2], previousLab.counts[1]);
     const manualAdoption = percent(recommendationShown.counts[1], recommendationShown.counts[0]);
     const priorRecommendation = calculateOrderedFunnel(inPrior, [
       { id: 'shown', matches: (event) => event.action === 'recommendation_shown' },
@@ -247,6 +264,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
     const completeEnough = !quality.invalidOrUnknownEvents;
     const meaningful = (sample: number, current: number, prior: number) => sample >= 12 && completeEnough && Math.abs(current - prior) >= 5;
     const insights: Insight[] = [
+      ...(meaningful(lab.counts[1], labSupportRate, previousLabSupportRate) && labSupportRate < 55 ? [{
+        evidence: `Lab 工具详情查看 ${lab.counts[1]} 个会话，支持率 ${labSupportRate}%（前周期 ${previousLabSupportRate}%）。`,
+        impact: '相关信号：一线工具已被看见，但价值、适用边界或可信度尚未形成共识。',
+        hypothesis: '员工无法快速判断实验工具是否适用于自己的岗位，或担心其维护与数据风险。',
+        experiment: '在 Lab 卡片补充适用场景、稳定运行窗口和代码审核状态，并提供一键试用说明。',
+        primary: 'Lab 工具支持率',
+        guardrail: '代码审核发起率不下降',
+      }] : []),
       ...(meaningful(appCenter.counts[0], currentActivation, previousActivation) && currentActivation < 45 ? [{
         evidence: `应用中心触达 ${appCenter.counts[0]} 个会话，工具激活率 ${currentActivation}%（前周期 ${previousActivation}%）。`,
         impact: '相关信号：发现能力并未稳定沉淀为日常入口。',
@@ -283,6 +308,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
       selectedJourney,
       features,
       appCenter,
+      lab,
+      labLearning,
       personalization,
       layoutReorderedSessions,
       validSessionCount,
@@ -386,6 +413,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
         <section className="crm-card p-4"><div className="flex items-start justify-between"><div><h3 className="text-sm font-extrabold text-slate-900">功能采用</h3><p className="mt-0.5 text-[10px] text-slate-400">按独立业务会话的触达率与使用深度排序，不按原始点击量</p></div><span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-semibold text-[#1a6fd4]">业务会话 n={dashboard.allBusinessSessions}</span></div><div className="mt-4 space-y-2.5">{dashboard.features.map((feature, index) => <div key={feature.label} className="grid grid-cols-[15px_72px_1fr_46px] items-center gap-2"><span className="text-[10px] font-bold text-[#8a9ab8]">{index + 1}</span><span className="truncate text-[10px] font-medium text-[#455775]">{feature.label}</span><div className="h-1.5 overflow-hidden rounded-full bg-[#edf3f9]"><div className="h-full rounded-full bg-[#1a6fd4]" style={{ width: `${Math.max(4, percent(feature.sessions, dashboard.allBusinessSessions || 1))}%` }} /></div><span className="text-right text-[9px] text-slate-500">{formatPercent(feature.sessions, dashboard.allBusinessSessions)} · {feature.depth}x</span></div>)}</div><p className="mt-3 text-[9px] text-slate-400">展示：触达率 · 使用深度（每触达会话平均事件数）</p></section>
 
         <section className="crm-card overflow-hidden"><div className="px-4 pb-3 pt-4"><h3 className="text-sm font-extrabold text-slate-900">应用中心 → 工作必备</h3><p className="mt-0.5 text-[10px] text-slate-400">严格顺序漏斗，用于识别“发现高、沉淀低”</p></div><div className="grid grid-cols-4 border-t border-[#edf3f9]">{['打开应用中心', '查看工具', '添加工作必备', '再次启动'].map((label, index) => <div key={label} className="min-w-0 px-2 py-3 text-center"><strong className="block text-[17px] text-slate-900">{dashboard.appCenter.counts[index]}</strong><span className="mt-1 block text-[9px] leading-tight text-[#5a6a88]">{label}</span>{index > 0 && <span className="mt-1 block text-[8px] text-slate-400">{formatPercent(dashboard.appCenter.counts[index], dashboard.appCenter.counts[index - 1])}</span>}</div>)}</div></section>
+
+        <section className="crm-card overflow-hidden"><div className="px-4 pb-3 pt-4"><div className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[#1a6fd4]" /><h3 className="text-sm font-extrabold text-slate-900">一线 Lab 共创</h3></div><p className="mt-0.5 text-[10px] leading-relaxed text-slate-400">支持表示实验价值信号；审核发起仅代表提交意图，不代表代码已通过。</p></div><div className="grid grid-cols-3 border-y border-[#edf3f9]">{['进入 Lab', '查看工具', '支持工具'].map((label, index) => <div key={label} className="min-w-0 px-2 py-3 text-center"><strong className="block text-[17px] text-slate-900">{dashboard.lab.counts[index]}</strong><span className="mt-1 block text-[9px] leading-tight text-[#5a6a88]">{label}</span>{index > 0 && <span className="mt-1 block text-[8px] text-slate-400">{formatPercent(dashboard.lab.counts[index], dashboard.lab.counts[index - 1])}</span>}</div>)}</div><div className="flex items-center justify-between px-4 py-3"><span className="text-[10px] text-[#5a6a88]">教程查看 → 发起代码审核</span><strong className="text-[11px] text-[#1a2438]">{dashboard.labLearning.counts[0]} → {dashboard.labLearning.counts[1]} <span className="font-normal text-[#8a9ab8]">· {formatPercent(dashboard.labLearning.counts[1], dashboard.labLearning.counts[0])}</span></strong></div></section>
 
         <section className="crm-card p-4"><div className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[#1a6fd4]" /><h3 className="text-sm font-extrabold text-slate-900">智能推荐状态阶梯</h3></div><div className="mt-3 grid grid-cols-4 gap-1.5 text-center"><div><strong className="text-[17px] text-slate-900">{dashboard.recommendationShown.counts[0]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">推荐展示</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.recommendationShown.counts[1]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">手工接受</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.automatic.counts[1]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">自动执行</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[2]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">转入后打开</span></div></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">手工采纳与自动执行永远分开统计；自动执行不是主动采纳。</p></section>
 

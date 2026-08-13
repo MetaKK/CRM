@@ -9,22 +9,31 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
-import { AppTool } from '../../types';
+import { AppTool, FrontlineLabTool } from '../../types';
 import { MAX_QUICK_TOOLS } from '../../lib/workbenchPreferences';
 import { getAppToolIcon } from '../appTools';
+import { LabCenterPanel } from './LabCenterPanel';
 
-type AppCenterCategory = 'all' | 'recent' | AppTool['category'];
+type AppCenterCategory = 'recent' | 'lab' | AppTool['category'];
 
 interface AppCenterViewProps {
   roleTitle: string;
   tools: AppTool[];
+  labTools: FrontlineLabTool[];
   pinnedToolIds: string[];
   recentToolIds: string[];
+  supportedLabToolIds: string[];
   initialToolId?: string | null;
   onBack: () => void;
   onTogglePinnedTool: (toolId: string) => void;
   onLaunchTool: (tool: AppTool) => void;
   onToolDetailOpen?: () => void;
+  onLabOpened?: () => void;
+  onLabToolViewed?: (tool: FrontlineLabTool) => void;
+  onLabToolSupportToggled?: (tool: FrontlineLabTool, nextSupported: boolean) => void;
+  onLabToolLaunched?: (tool: FrontlineLabTool) => void;
+  onLabTutorialOpened?: () => void;
+  onLabSubmissionStarted?: () => void;
 }
 
 const categoryOrder: AppTool['category'][] = [
@@ -38,8 +47,8 @@ const categoryOrder: AppTool['category'][] = [
 ];
 
 const categoryLabels: Record<AppCenterCategory, string> = {
-  all: '全部应用',
   recent: '最近使用',
+  lab: '一线 Lab',
   销售工具: '销售工具',
   客户管理: '客户管理',
   数据分析: '数据分析',
@@ -52,13 +61,21 @@ const categoryLabels: Record<AppCenterCategory, string> = {
 export const AppCenterView: React.FC<AppCenterViewProps> = ({
   roleTitle,
   tools,
+  labTools,
   pinnedToolIds,
   recentToolIds,
+  supportedLabToolIds,
   initialToolId,
   onBack,
   onTogglePinnedTool,
   onLaunchTool,
   onToolDetailOpen,
+  onLabOpened,
+  onLabToolViewed,
+  onLabToolSupportToggled,
+  onLabToolLaunched,
+  onLabTutorialOpened,
+  onLabSubmissionStarted,
 }) => {
   const [activeCategory, setActiveCategory] = useState<AppCenterCategory>(() => (
     recentToolIds.some((toolId) => tools.some((tool) => tool.id === toolId))
@@ -92,8 +109,8 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
 
   useEffect(() => {
     const fallbackCategory = recentTools.length ? 'recent' : availableCategories[0] || 'recent';
-    const categoryIsAvailable = activeCategory === 'all'
-      || activeCategory === 'recent'
+    const categoryIsAvailable = activeCategory === 'recent'
+      || activeCategory === 'lab'
       || availableCategories.includes(activeCategory);
     if (!categoryIsAvailable || (activeCategory === 'recent' && !recentTools.length)) {
       setActiveCategory(fallbackCategory);
@@ -105,11 +122,16 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
     onToolDetailOpen?.();
   };
 
+  const selectCategory = (category: AppCenterCategory) => {
+    if (category === 'lab' && activeCategory !== 'lab') onLabOpened?.();
+    setActiveCategory(category);
+  };
+
   const visibleTools = useMemo(() => {
     const source = activeCategory === 'recent'
       ? recentTools
-      : activeCategory === 'all'
-        ? tools
+      : activeCategory === 'lab'
+        ? []
         : tools.filter((tool) => tool.category === activeCategory);
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return source;
@@ -171,7 +193,7 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-[18px] font-extrabold tracking-tight text-[#1a2438]">应用目录</h2>
-            <p className="mt-0.5 text-[10px] text-[#8a9ab8]">{activeCategory === 'recent' ? '优先呈现你最近打开的业务工具' : `仅展示 ${roleTitle} 当前可用的业务工具`}</p>
+            <p className="mt-0.5 text-[10px] text-[#8a9ab8]">{activeCategory === 'lab' ? '员工共创实验工具，独立于正式应用目录' : activeCategory === 'recent' ? '优先呈现你最近打开的业务工具' : `仅展示 ${roleTitle} 当前可用的业务工具`}</p>
           </div>
           <button type="button" onClick={() => setIsCategoryOpen(true)} className="flex h-8 items-center gap-1 rounded-lg px-1 text-[11px] font-semibold text-[#5a6a88] hover:text-[#1a6fd4] cursor-pointer" aria-haspopup="dialog">
             <LayoutGrid className="h-4 w-4" /> 分类
@@ -179,13 +201,13 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
         </div>
 
         <div className="mt-3 -mx-4 flex overflow-x-auto border-b border-[#eaf0f7] px-4" role="tablist" aria-label="应用分类">
-          {(['recent', ...availableCategories] as AppCenterCategory[]).map((category) => (
+          {(['recent', ...availableCategories, 'lab'] as AppCenterCategory[]).map((category) => (
             <button
               key={category}
               type="button"
               role="tab"
               aria-selected={activeCategory === category}
-              onClick={() => setActiveCategory(category)}
+              onClick={() => selectCategory(category)}
               className={`relative mr-5 shrink-0 pb-2.5 text-[12px] transition-colors cursor-pointer ${activeCategory === category ? 'font-bold text-[#1a6fd4]' : 'font-medium text-[#6a7b98]'}`}
             >
               {categoryLabels[category]}
@@ -195,6 +217,15 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
         </div>
       </section>
 
+      {activeCategory === 'lab' ? <LabCenterPanel
+        tools={labTools}
+        supportedToolIds={supportedLabToolIds}
+        onToggleSupport={(tool, nextSupported) => onLabToolSupportToggled?.(tool, nextSupported)}
+        onToolViewed={(tool) => onLabToolViewed?.(tool)}
+        onToolLaunched={(tool) => onLabToolLaunched?.(tool)}
+        onTutorialOpened={() => onLabTutorialOpened?.()}
+        onSubmissionStarted={() => onLabSubmissionStarted?.()}
+      /> : (
       <section className="bg-white px-4 pb-8">
         {visibleTools.length ? <div className="divide-y divide-[#eaf0f7]">{visibleTools.map((tool) => {
           const Icon = getAppToolIcon(tool.iconName);
@@ -227,10 +258,11 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
             <Search className="h-7 w-7 text-[#aab8cd]" />
             <strong className="mt-3 text-[13px] text-[#3a4a68]">{activeCategory === 'recent' ? '还没有最近使用的应用' : '没有匹配的应用'}</strong>
             <p className="mt-1 max-w-[250px] text-[10px] leading-relaxed text-[#8a9ab8]">{activeCategory === 'recent' ? '打开一个应用后会出现在这里，方便下次快速继续。' : '试试清除搜索词或切换其他应用分类。'}</p>
-            {activeCategory !== 'all' && <button type="button" onClick={() => { setActiveCategory(availableCategories[0] || 'all'); setQuery(''); }} className="mt-3 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer">浏览可用应用</button>}
+            <button type="button" onClick={() => { selectCategory(availableCategories[0] || 'recent'); setQuery(''); }} className="mt-3 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer">浏览可用应用</button>
           </div>
         )}
       </section>
+      )}
     </>
   );
 
@@ -262,15 +294,30 @@ export const AppCenterView: React.FC<AppCenterViewProps> = ({
         <div className="flex h-10 items-center justify-between">
           <button type="button" onClick={selectedTool ? returnToList : onBack} className="flex h-10 w-10 items-center justify-center rounded-xl text-[#3a4a68] hover:bg-blue-50 hover:text-[#1a6fd4] cursor-pointer" aria-label={selectedTool ? '返回应用中心列表' : '返回工作台'}><ArrowLeft className="h-5 w-5" /></button>
           <h1 className="text-[17px] font-extrabold tracking-tight text-[#1a2438]">{selectedTool ? '应用详情' : '应用中心'}</h1>
-          {selectedTool ? <span className="h-10 w-10" aria-hidden="true" /> : <button type="button" onClick={() => { setIsSearching((open) => !open); if (isSearching) setQuery(''); }} className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors cursor-pointer ${isSearching ? 'bg-blue-50 text-[#1a6fd4]' : 'text-[#3a4a68] hover:bg-blue-50 hover:text-[#1a6fd4]'}`} aria-label={isSearching ? '关闭搜索' : '搜索应用'}>{isSearching ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}</button>}
+          {selectedTool || activeCategory === 'lab' ? <span className="h-10 w-10" aria-hidden="true" /> : <button type="button" onClick={() => { setIsSearching((open) => !open); if (isSearching) setQuery(''); }} className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors cursor-pointer ${isSearching ? 'bg-blue-50 text-[#1a6fd4]' : 'text-[#3a4a68] hover:bg-blue-50 hover:text-[#1a6fd4]'}`} aria-label={isSearching ? '关闭搜索' : '搜索应用'}>{isSearching ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}</button>}
         </div>
-        {!selectedTool && isSearching && <label className="relative mt-2 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a9ab8]" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索应用名称或能力" className="h-10 w-full rounded-xl border border-[#dce9f7] bg-[#f8fbff] pl-9 pr-3 text-[12px] text-[#1a2438] outline-none focus:border-blue-300" /></label>}
+        {!selectedTool && activeCategory !== 'lab' && isSearching && <label className="relative mt-2 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a9ab8]" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索应用名称或能力" className="h-10 w-full rounded-xl border border-[#dce9f7] bg-[#f8fbff] pl-9 pr-3 text-[12px] text-[#1a2438] outline-none focus:border-blue-300" /></label>}
       </header>
 
       {!selectedTool && renderPinnedTools()}
       {selectedTool ? renderDetail(selectedTool) : renderToolList()}
 
-      {isCategoryOpen && <div className="fixed inset-0 z-50 flex bg-[#1a2438]/35" role="dialog" aria-modal="true" aria-label="选择应用分类"><button type="button" className="flex-1 cursor-default" onClick={() => setIsCategoryOpen(false)} aria-label="关闭应用分类" /><section className="h-full w-[86%] max-w-[368px] overflow-y-auto bg-white px-5 pb-safe pt-safe shadow-[-12px_0_30px_rgba(26,36,56,.16)]"><div className="flex items-center justify-between py-4"><h2 className="text-[20px] font-extrabold tracking-tight text-[#1a2438]">应用分类</h2><button type="button" onClick={() => setIsCategoryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-[#5a6a88] hover:bg-blue-50 hover:text-[#1a6fd4] cursor-pointer" aria-label="关闭"><X className="h-5 w-5" /></button></div><div className="grid grid-cols-2 gap-3 pb-5">{(['all', 'recent', ...availableCategories] as AppCenterCategory[]).map((category) => { const count = category === 'all' ? tools.length : category === 'recent' ? recentToolIds.filter((id) => toolById.has(id)).length : tools.filter((tool) => tool.category === category).length; const isActive = activeCategory === category; return <button key={category} type="button" onClick={() => { setActiveCategory(category); setIsCategoryOpen(false); }} className={`min-h-20 rounded-xl border px-3 text-left transition-colors cursor-pointer ${isActive ? 'border-blue-200 bg-blue-50 text-[#1a6fd4]' : 'border-[#eaf0f7] bg-[#f8fbff] text-[#3a4a68] hover:border-blue-100 hover:bg-blue-50/50'}`}><span className="block text-[13px] font-bold">{categoryLabels[category]}</span><span className="mt-1 block text-[10px] opacity-70">{count} 个应用</span></button>; })}</div><p className="border-t border-[#eaf0f7] pt-4 text-[10px] leading-relaxed text-[#8a9ab8]">分类只显示当前角色可访问的应用，避免展示无权限或无业务场景的空入口。</p></section></div>}
+      {isCategoryOpen && <div className="fixed inset-0 z-50 flex bg-[#1a2438]/35" role="dialog" aria-modal="true" aria-label="选择应用分类">
+        <button type="button" className="flex-1 cursor-default" onClick={() => setIsCategoryOpen(false)} aria-label="关闭应用分类" />
+        <section className="h-full w-[86%] max-w-[368px] overflow-y-auto bg-white px-5 pb-safe pt-safe shadow-[-12px_0_30px_rgba(26,36,56,.16)]">
+          <div className="flex items-center justify-between py-4"><h2 className="text-[20px] font-extrabold tracking-tight text-[#1a2438]">应用分类</h2><button type="button" onClick={() => setIsCategoryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-[#5a6a88] hover:bg-blue-50 hover:text-[#1a6fd4] cursor-pointer" aria-label="关闭"><X className="h-5 w-5" /></button></div>
+          <div className="grid grid-cols-2 gap-3 pb-5">{(['recent', ...availableCategories, 'lab'] as AppCenterCategory[]).map((category) => {
+            const count = category === 'recent'
+              ? recentTools.length
+              : category === 'lab'
+                ? labTools.length
+                : tools.filter((tool) => tool.category === category).length;
+            const isActive = activeCategory === category;
+            return <button key={category} type="button" onClick={() => { selectCategory(category); setIsCategoryOpen(false); }} className={`min-h-20 rounded-xl border px-3 text-left transition-colors cursor-pointer ${isActive ? 'border-blue-200 bg-blue-50 text-[#1a6fd4]' : 'border-[#eaf0f7] bg-[#f8fbff] text-[#3a4a68] hover:border-blue-100 hover:bg-blue-50/50'}`}><span className="block text-[13px] font-bold">{categoryLabels[category]}</span><span className="mt-1 block text-[10px] opacity-70">{count} 个应用</span></button>;
+          })}</div>
+          <p className="border-t border-[#eaf0f7] pt-4 text-[10px] leading-relaxed text-[#8a9ab8]">分类只显示当前角色可访问的正式应用；一线 Lab 独立呈现，实验工具不等同于已获支持的正式应用。</p>
+        </section>
+      </div>}
     </div>
   );
 };

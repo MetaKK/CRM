@@ -238,6 +238,24 @@ export interface AppTool {
   action?: 'quote';
 }
 
+/**
+ * A Lab tool is a frontline experiment. It is intentionally separate from
+ * approved AppTool entries: experimentation must not imply production support.
+ */
+export interface FrontlineLabTool {
+  id: string;
+  name: string;
+  quickLabel: string;
+  desc: string;
+  iconName: string;
+  submittedBy: string;
+  submittedRole: string;
+  scenario: string;
+  supportCount: number;
+  stabilityLabel: string;
+  stage: '验证中' | '观察中';
+}
+
 export type WorkbenchSectionId = 'focus' | 'pulse' | 'tools';
 
 export interface WorkbenchPreferences {
@@ -289,6 +307,12 @@ export type AnalyticsAction =
   | 'tool_configured'
   | 'tool_detail_viewed'
   | 'app_center_opened'
+  | 'lab_opened'
+  | 'lab_tool_viewed'
+  | 'lab_tool_supported'
+  | 'lab_tool_launched'
+  | 'lab_tutorial_opened'
+  | 'lab_submission_started'
   | 'client_opened'
   | 'client_created'
   | 'client_search_started'
@@ -331,6 +355,7 @@ export type AnalyticsPropertyValue =
   | 'quote'
   | 'xiaowan'
   | 'analytics'
+  | 'lab'
   | 'ai'
   | 'manual'
   | 'automatic'
@@ -342,7 +367,8 @@ export type AnalyticsPropertyValue =
   | 'priority'
   | 'schedule'
   | 'quote_card'
-  | 'tool';
+  | 'tool'
+  | 'lab_tool';
 
 export interface ProductAnalyticsEvent {
   schemaVersion: 2;
@@ -364,7 +390,7 @@ export interface ProductAnalyticsEvent {
     method?: 'ai' | 'manual' | 'automatic';
     stage?: 'priority' | 'schedule';
     configurationAction?: 'add' | 'remove' | 'reorder';
-    toolType?: 'quote_card' | 'tool';
+    toolType?: 'quote_card' | 'tool' | 'lab_tool';
   };
 }
 

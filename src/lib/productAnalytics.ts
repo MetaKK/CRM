@@ -25,15 +25,16 @@ const actions: AnalyticsAction[] = [
   'app_opened', 'page_viewed', 'role_switched', 'quick_action_started', 'priority_opened', 'schedule_opened',
   'recommendation_shown', 'recommendation_accepted', 'auto_transfer_toggled', 'priority_transferred',
   'transferred_priority_opened', 'layout_reordered', 'tool_launched', 'tool_configured', 'tool_detail_viewed',
-  'app_center_opened', 'client_opened', 'client_created', 'client_search_started', 'client_filter_changed',
+  'app_center_opened', 'lab_opened', 'lab_tool_viewed', 'lab_tool_supported', 'lab_tool_launched', 'lab_tutorial_opened', 'lab_submission_started',
+  'client_opened', 'client_created', 'client_search_started', 'client_filter_changed',
   'quote_opened', 'quote_generated', 'quote_shared', 'test_drive_booked', 'test_drive_released', 'order_created',
   'contract_opened', 'delivery_started', 'quote_cancelled', 'quote_failed', 'quick_prompt_sent', 'message_sent', 'voice_started', 'period_changed', 'source_explained',
 ];
 const statuses: AnalyticsEventStatus[] = ['viewed', 'started', 'succeeded', 'external_handoff', 'failed', 'cancelled'];
 const trustLevels: AnalyticsTrustLevel[] = ['verified_behavior', 'process_proxy', 'unobservable'];
 const propertyValues: AnalyticsPropertyValue[] = [
-  'workbench', 'clients', 'testdrive', 'orders', 'app_center', 'work_essential', 'quote', 'xiaowan', 'analytics',
-  'ai', 'manual', 'automatic', 'all', 'stage', 'add', 'remove', 'reorder', 'priority', 'schedule', 'quote_card', 'tool',
+  'workbench', 'clients', 'testdrive', 'orders', 'app_center', 'work_essential', 'quote', 'xiaowan', 'analytics', 'lab',
+  'ai', 'manual', 'automatic', 'all', 'stage', 'add', 'remove', 'reorder', 'priority', 'schedule', 'quote_card', 'tool', 'lab_tool',
 ];
 
 const roleTypeByAccountId: Record<string, AnalyticsRoleType> = {
@@ -72,7 +73,7 @@ const isSafeProperties = (value: unknown): value is ProductAnalyticsEvent['prope
   if (props.method !== undefined && !['ai', 'manual', 'automatic'].includes(String(props.method))) return false;
   if (props.stage !== undefined && !['priority', 'schedule'].includes(String(props.stage))) return false;
   if (props.configurationAction !== undefined && !['add', 'remove', 'reorder'].includes(String(props.configurationAction))) return false;
-  return props.toolType === undefined || ['quote_card', 'tool'].includes(String(props.toolType));
+  return props.toolType === undefined || ['quote_card', 'tool', 'lab_tool'].includes(String(props.toolType));
 };
 
 const isAnalyticsEvent = (value: unknown): value is ProductAnalyticsEvent => {
@@ -186,6 +187,13 @@ export const getDemoAnalyticsEvents = (): ProductAnalyticsEvent[] => {
       }
       if (session % 2 === 0 || session === 1) add(daysAgo, session, 43, 'app_center', 'app_center_opened', 'viewed', 'verified_behavior');
       if (session % 2 === 0) add(daysAgo, session, 46, 'app_center', 'tool_detail_viewed', 'viewed', 'verified_behavior', { toolType: 'tool' });
+      if (session === 2 || (daysAgo % 5 === 0 && session === 4)) {
+        add(daysAgo, session, 47, 'app_center', 'lab_opened', 'viewed', 'verified_behavior', { source: 'app_center', target: 'lab', toolType: 'lab_tool' });
+        add(daysAgo, session, 48, 'app_center', 'lab_tool_viewed', 'viewed', 'verified_behavior', { source: 'lab', toolType: 'lab_tool' });
+        if (daysAgo % 3 !== 1) add(daysAgo, session, 49, 'app_center', 'lab_tool_supported', 'succeeded', 'verified_behavior', { source: 'lab', toolType: 'lab_tool' });
+        if (daysAgo % 4 === 0) add(daysAgo, session, 50, 'app_center', 'lab_tutorial_opened', 'viewed', 'verified_behavior', { source: 'lab', toolType: 'lab_tool' });
+        if (daysAgo % 8 === 0) add(daysAgo, session, 51, 'app_center', 'lab_submission_started', 'started', 'process_proxy', { source: 'lab', toolType: 'lab_tool' });
+      }
       if (session === 0 || (daysAgo % 4 === 0 && session === 3)) add(daysAgo, session, 49, 'work_essential', 'tool_configured', 'succeeded', 'verified_behavior', { configurationAction: 'add', toolType: 'tool' });
       if (session % 3 === 0) add(daysAgo, session, 57, 'work_essential', 'tool_launched', 'started', 'process_proxy', { toolType: 'tool' });
       if (session === 1 || (daysAgo % 3 === 0 && session === 4)) {
