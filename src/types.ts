@@ -77,6 +77,7 @@ export interface WorkbenchInsight {
 export type TabType =
   | 'xiaowan'
   | 'workbench'
+  | 'app_center'
   | 'analytics'
   | 'clients'
   | 'testdrive'

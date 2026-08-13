@@ -28,6 +28,7 @@ import {
   readWorkbenchPreferences,
   saveWorkbenchPreferences,
 } from './lib/workbenchPreferences';
+import { readRecentAppToolIds, recordRecentAppToolId } from './lib/appCenterPreferences';
 import {
   getAnalyticsActorType,
   getAnalyticsJourney,
@@ -44,7 +45,6 @@ import { TabBar } from './components/TabBar';
 // Interactive Modals & Drawers
 import { AccountDrawer } from './components/drawers/AccountDrawer';
 import { StoreSwitcherModal } from './components/modals/StoreSwitcherModal';
-import { AppCenterModal } from './components/modals/AppCenterModal';
 import { CustomerServiceModal } from './components/modals/CustomerServiceModal';
 import { NotificationsModal } from './components/modals/NotificationsModal';
 import { AccountSecurityModal } from './components/modals/AccountSecurityModal';
@@ -60,6 +60,7 @@ import { ClientsView } from './components/views/ClientsView';
 import { TestDriveView } from './components/views/TestDriveView';
 import { OrdersView } from './components/views/OrdersView';
 import { AnalyticsView } from './components/views/AnalyticsView';
+import { AppCenterView } from './components/views/AppCenterView';
 
 const getAvailableTools = (accountId: string) =>
   mockAppTools.filter((tool) => !tool.roleIds?.length || tool.roleIds.includes(accountId));
@@ -67,6 +68,7 @@ const getAvailableTools = (accountId: string) =>
 const analyticsModuleByTab: Record<TabType, ProductAnalyticsEvent['module']> = {
   xiaowan: 'xiaowan',
   workbench: 'workbench',
+  app_center: 'app_center',
   analytics: 'analytics',
   clients: 'client_360',
   testdrive: 'test_drive',
@@ -81,6 +83,7 @@ const analyticsModuleByTab: Record<TabType, ProductAnalyticsEvent['module']> = {
 const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalyticsEvent['properties']>['target']>> = {
   xiaowan: 'xiaowan',
   workbench: 'workbench',
+  app_center: 'app_center',
   analytics: 'analytics',
   clients: 'clients',
   testdrive: 'testdrive',
@@ -129,8 +132,11 @@ export default function App() {
 
   // Modals state
   const [isStoreSwitcherOpen, setIsStoreSwitcherOpen] = useState(false);
-  const [isAppCenterOpen, setIsAppCenterOpen] = useState(false);
   const [appCenterInitialToolId, setAppCenterInitialToolId] = useState<string | null>(null);
+  const [appCenterReturnTab, setAppCenterReturnTab] = useState<TabType>('workbench');
+  const [recentAppToolIds, setRecentAppToolIds] = useState<string[]>(() =>
+    readRecentAppToolIds('kian', getAvailableTools('kian').map((tool) => tool.id)),
+  );
   const [isCustomerServiceOpen, setIsCustomerServiceOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAccountSecurityOpen, setIsAccountSecurityOpen] = useState(false);
@@ -171,6 +177,7 @@ export default function App() {
         currentAccount.autoPromoteEnabledByDefault,
       ),
     );
+    setRecentAppToolIds(readRecentAppToolIds(currentAccount.id, availableTools.map((tool) => tool.id)));
   }, [currentAccount.id]);
 
   useEffect(() => {
@@ -273,8 +280,9 @@ export default function App() {
 
   const openAppCenter = (toolId: string | null = null) => {
     recordAnalytics(currentAccount, { module: 'app_center', action: 'app_center_opened', status: 'viewed', trustLevel: 'verified_behavior' });
+    if (activeTab !== 'app_center') setAppCenterReturnTab(activeTab);
     setAppCenterInitialToolId(toolId);
-    setIsAppCenterOpen(true);
+    setActiveTab('app_center');
   };
 
   const handleLaunchTool = (tool: AppTool, source: 'work_essential' | 'app_center' = 'work_essential') => {
@@ -285,6 +293,7 @@ export default function App() {
       trustLevel: 'process_proxy',
       properties: { source, toolType: 'tool' },
     });
+    setRecentAppToolIds(recordRecentAppToolId(currentAccount.id, tool.id, availableTools.map((item) => item.id)));
     if (tool.action === 'quote') {
       recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', status: 'started', trustLevel: 'process_proxy', properties: { source } });
       setQuoteBuilderClient(mockClients[0]);
@@ -294,7 +303,11 @@ export default function App() {
       setActiveTab(tool.targetTab);
       return;
     }
-    openAppCenter(tool.id);
+    if (source === 'work_essential') {
+      openAppCenter(tool.id);
+      return;
+    }
+    showToast(`已为你打开：${tool.quickLabel}`);
   };
 
   const openClient360 = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
@@ -390,9 +403,9 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Container */}
-      <div className="min-h-screen min-h-[100dvh] pb-24 flex flex-col justify-between">
+      <div className={`min-h-screen min-h-[100dvh] flex flex-col justify-between ${activeTab === 'app_center' ? '' : 'pb-24'}`}>
         {/* Top Header Bar - Omitted on Xiaowan AI tab for full-screen conversational experience */}
-        {activeTab !== 'xiaowan' && (
+        {activeTab !== 'xiaowan' && activeTab !== 'app_center' && (
           <Header
             currentAccount={currentAccount}
             onOpenAccountDrawer={() => setIsAccountDrawerOpen(true)}
@@ -408,7 +421,30 @@ export default function App() {
 
         {/* Tab Views Router */}
         <AnimatePresence mode="wait">
-          {activeTab === 'workbench' ? (
+          {activeTab === 'app_center' ? (
+            <motion.div
+              key="app-center"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 12 }}
+              transition={{ duration: 0.16 }}
+            >
+              <AppCenterView
+                roleTitle={currentAccount.roleTitle}
+                tools={availableTools}
+                pinnedToolIds={workbenchPreferences.quickToolIds}
+                recentToolIds={recentAppToolIds}
+                initialToolId={appCenterInitialToolId}
+                onBack={() => {
+                  setAppCenterInitialToolId(null);
+                  setActiveTab(appCenterReturnTab);
+                }}
+                onTogglePinnedTool={handleQuickToolToggle}
+                onLaunchTool={(tool) => handleLaunchTool(tool, 'app_center')}
+                onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_detail_viewed', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'tool' } })}
+              />
+            </motion.div>
+          ) : activeTab === 'workbench' ? (
             <motion.div
               key="workbench"
               initial={{ opacity: 0, y: 8 }}
@@ -542,11 +578,11 @@ export default function App() {
         </AnimatePresence>
 
         {/* Bottom Navigation Bar */}
-        <TabBar
+        {activeTab !== 'app_center' && <TabBar
           activeTab={activeTab}
           onSelectTab={(tab) => setActiveTab(tab)}
           currentAccount={currentAccount}
-        />
+        />}
       </div>
 
       {/* Account Drawer Slide-Over (Triggered by Top Left Avatar) */}
@@ -557,7 +593,10 @@ export default function App() {
         activeAccountId={activeAccountId}
         onSelectAccount={handleSelectAccount}
         onOpenStoreSwitcher={() => setIsStoreSwitcherOpen(true)}
-        onOpenAppCenter={() => openAppCenter()}
+        onOpenAppCenter={() => {
+          setIsAccountDrawerOpen(false);
+          openAppCenter();
+        }}
         onOpenCustomerService={() => setIsCustomerServiceOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
@@ -594,25 +633,6 @@ export default function App() {
         stores={mockStores}
         currentStoreId={profile.store}
         onSelectStore={handleSelectStore}
-      />
-
-      <AppCenterModal
-        isOpen={isAppCenterOpen}
-        onClose={() => {
-          setIsAppCenterOpen(false);
-          setAppCenterInitialToolId(null);
-        }}
-        advisorName={profile.name}
-        storeName={profile.store}
-        phone={profile.phone}
-        roleTitle={currentAccount.roleTitle}
-        tools={availableTools}
-        pinnedToolIds={workbenchPreferences.quickToolIds}
-        initialToolId={appCenterInitialToolId}
-        onTogglePinnedTool={handleQuickToolToggle}
-        onLaunchTool={(tool) => handleLaunchTool(tool, 'app_center')}
-        onToolDetailOpen={() => recordAnalytics(currentAccount, { module: 'app_center', action: 'tool_detail_viewed', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'tool' } })}
-        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', status: 'succeeded', trustLevel: 'verified_behavior', properties: { source: 'app_center', toolType: 'quote_card' } })}
       />
 
       <CustomerServiceModal
