@@ -469,20 +469,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
 
     return (
       <div className="border-t border-[#f0f3f9] px-5">
-        {total > 0 && (
-          <div className="py-3">
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="font-medium text-[#5a6a88]">今日已完成 {completed} / 共 {total}</span>
-              <span className="text-[#8a9ab8]">{progress}%</span>
-            </div>
-            <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-[#eaf0f7]" aria-label={`今日行程完成 ${progress}%`}>
-              <div className="h-full rounded-full bg-[#1a6fd4] transition-[width] duration-300" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        )}
-
         {activeSchedule.length === 0 ? (
-          <p className="border-t border-[#f0f3f9] py-5 text-center text-[12px] text-[#8a9ab8]">今日行程已全部完成</p>
+          <p className="py-5 text-center text-[12px] text-[#8a9ab8]">今日行程已全部完成</p>
         ) : activeSchedule.map((item) => {
           const tone = urgencyTone[item.urgency];
           const reference: WorkbenchTaskReference = { kind: 'schedule', id: item.id };
@@ -528,7 +516,22 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
               className="flex min-h-11 w-full items-center justify-between text-[11px] font-medium text-[#5a6a88] cursor-pointer"
             >
               <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" />已完成 {completedSchedule.length} 件</span>
-              <ChevronDown className={`h-4 w-4 text-[#8a9ab8] transition-transform ${isCompletedExpanded ? 'rotate-180' : ''}`} />
+              <span className="flex items-center gap-2">
+                <span
+                  role="progressbar"
+                  aria-label={`今日行程已完成 ${completed} 件，共 ${total} 件`}
+                  aria-valuemin={0}
+                  aria-valuemax={total}
+                  aria-valuenow={completed}
+                  className="h-1 w-10 overflow-hidden rounded-full bg-[#eaf0f7]"
+                >
+                  <span
+                    className="block h-full rounded-full bg-[#8fb7e7] transition-[width] duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </span>
+                <ChevronDown className={`h-4 w-4 text-[#8a9ab8] transition-transform ${isCompletedExpanded ? 'rotate-180' : ''}`} />
+              </span>
             </button>
             {isCompletedExpanded && completedSchedule.map((item) => (
               <div key={item.id} className="flex items-center gap-3 border-t border-[#f0f3f9] py-2.5">
