@@ -11,6 +11,7 @@ import {
   NotificationItem,
   VehicleAsset,
   RoleAccount,
+  BusinessDemoRecord,
 } from '../types';
 
 export const mockRoleAccounts: RoleAccount[] = [
@@ -37,10 +38,10 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'orders', label: '订单', iconName: 'FileText' },
     ],
     workbenchMetrics: [
-      { label: '潜客跟进', value: 28, color: 'text-blue-400', targetTab: 'clients' },
-      { label: '今日试驾', value: 6, color: 'text-emerald-400', targetTab: 'testdrive' },
-      { label: '待发报价', value: 5, color: 'text-amber-400', targetTab: 'clients' },
-      { label: '本月交车', value: 12, color: 'text-indigo-400', targetTab: 'orders' },
+      { id: 'kian-follow-up', label: '潜客待跟进', unit: '人', values: { today: 28, seven_days: 143, month: 612 }, kind: 'process', definition: '仍需完成下一次有效触达的潜客数量', primary: true, targetTab: 'clients', filter: 'follow_up', sampleRecordIds: ['c-1', 'c-2', 'c-3'] },
+      { id: 'kian-test-drive', label: '试驾安排', unit: '场', values: { today: 6, seven_days: 31, month: 118 }, kind: 'result', definition: '已预约或正在执行的试驾安排', primary: true, targetTab: 'testdrive', filter: 'test_drive', sampleRecordIds: ['td-1', 'td-2', 'td-3'] },
+      { id: 'kian-pending-quote', label: '待补充报价', unit: '人', values: { today: 2, seven_days: 9, month: 36 }, kind: 'risk', definition: '已完成试驾但尚未形成可发送报价的客户', primary: false, targetTab: 'clients', filter: 'pending_quote', sampleRecordIds: ['c-3', 'c-5'], linkedActionIds: ['kian-quote-c3', 'kian-quote-c5'] },
+      { id: 'kian-arrival', label: '客户到店', unit: '批', values: { today: 4, seven_days: 24, month: 96 }, kind: 'result', definition: '已签到或确认到店的客户批次', primary: false, targetTab: 'clients', filter: 'arrival', sampleRecordIds: ['c-1', 'c-2'] },
     ],
     workbenchPriorities: [
       {
@@ -65,9 +66,12 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'kian-1600', time: '16:00', title: '二次到店报价', subject: '阿赫迈德 · 瑞虎8 Pro Max', description: '置换评估与 36 期金融方案', status: '需准备', urgency: 'critical', targetTab: 'clients', clientId: 'c-1' },
     ],
     workbenchInsight: {
-      eyebrow: '转化机会', title: '2 位试驾完成客户停留在报价阶段',
-      description: '优先发送含置换与分期的报价版本，预计可释放 3 个高质量成交机会。',
-      actionLabel: '查看待报价客户', targetTab: 'clients',
+      eyebrow: '待处理信号',
+      periods: {
+        today: { title: '{count} 位试驾完成客户待补充报价方案', description: '客户明确关注置换或分期，今天形成可发送方案可减少下一步流失。', actionLabel: '处理待报价客户', targetTab: 'clients', filter: 'pending_quote', recordIds: ['c-3', 'c-5'], countMetricId: 'kian-pending-quote', resolvedTitle: '今日待报价客户已处理完', resolvedDescription: '报价产出已确认；外发与成交仍需在后续流程验证。' },
+        seven_days: { title: '{count} 位近 7 天试驾客户仍待补充报价', description: '优先处理高意向样本，避免试驾热度随等待时间下降。', actionLabel: '处理待报价客户', targetTab: 'clients', filter: 'pending_quote', recordIds: ['c-3', 'c-5'], countMetricId: 'kian-pending-quote', resolvedTitle: '高优先级待报价样本已处理', resolvedDescription: '其余客户可在完整客户清单中继续推进。' },
+        month: { title: '本月试驾后报价承接仍有优化空间', description: '先处理最高优先级的待报价客户，再复盘方案生成与外发路径。', actionLabel: '查看待报价客户', targetTab: 'clients', filter: 'pending_quote', recordIds: ['c-3', 'c-5'], countMetricId: 'kian-pending-quote' },
+      },
     },
     workbenchTitle: '顾问/专家工作台',
     workbenchSubtitle: '今日需推进 3位意向客户 与 2场试驾',
@@ -96,10 +100,10 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'inventory', label: '门店库存', iconName: 'Car' },
     ],
     workbenchMetrics: [
-      { label: '今日进店', value: '42批', color: 'text-blue-400', targetTab: 'clients' },
-      { label: '门店成交', value: '8台', color: 'text-emerald-400', targetTab: 'orders' },
-      { label: '待审批报价', value: '3单', color: 'text-rose-400', targetTab: 'approvals' },
-      { label: '展厅现车', value: '19台', color: 'text-indigo-400', targetTab: 'inventory' },
+      { id: 'chery-store-visit', label: '客户进店', unit: '批', values: { today: 42, seven_days: 286, month: 1180 }, kind: 'process', definition: '已签到并进入接待流程的客户批次', primary: true, targetTab: 'clients', filter: 'store_visit', sampleRecordIds: ['c-1', 'c-2', 'c-3'] },
+      { id: 'chery-deal', label: '门店成交', unit: '台', values: { today: 8, seven_days: 52, month: 214 }, kind: 'result', definition: '已形成有效订单的车辆数量', primary: true, targetTab: 'orders', filter: 'deal', targetValues: { month: 250 } },
+      { id: 'chery-approval', label: '待审批报价', unit: '单', values: { today: 3, seven_days: 9, month: 37 }, kind: 'risk', definition: '超出顾问权限并等待店长决策的报价', primary: false, targetTab: 'approvals', filter: 'pending_approval', sampleRecordIds: ['approval-1', 'approval-2', 'approval-3'], linkedActionIds: ['approval-1', 'approval-2', 'approval-3'] },
+      { id: 'chery-inventory', label: '展厅现车', unit: '台', values: { today: 19, seven_days: 19, month: 19 }, kind: 'inventory', definition: '当前可用于展示、试驾或交付匹配的车辆', primary: false, targetTab: 'inventory', filter: 'vehicle_inventory', sampleRecordIds: ['store-car-1', 'store-car-2', 'store-car-3'] },
     ],
     workbenchPriorities: [
       {
@@ -124,9 +128,12 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'chery-1530', time: '15:30', title: '展厅巡检', subject: '试驾动线与客流承接', description: '高峰前确认车辆与接待人员', status: '待开始', urgency: 'high', targetTab: 'inventory' },
     ],
     workbenchInsight: {
-      eyebrow: '门店经营', title: '本月目标完成 86%，距离冲刺目标还差 14 台',
-      description: '当前到店转试驾率高于目标 4.2%，应优先清理待报价客户而非扩大线索量。',
-      actionLabel: '查看全店客户', targetTab: 'clients',
+      eyebrow: '待决策信号',
+      periods: {
+        today: { title: '{count} 单超权限报价待审批，其中 1 单即将失效', description: '先完成临期报价决策，避免顾问等待和方案失效。', actionLabel: '处理报价审批', targetTab: 'approvals', filter: 'pending_approval', recordIds: ['approval-1', 'approval-2', 'approval-3'], countMetricId: 'chery-approval', resolvedTitle: '今日报价审批已处理完', resolvedDescription: '审批结果已回写；客户是否接受仍需后续验证。' },
+        seven_days: { title: '近 7 天报价审批集中在高峰时段', description: '优先处理仍未决策的报价，并复盘审批权限与值班安排。', actionLabel: '查看审批清单', targetTab: 'approvals', filter: 'pending_approval', recordIds: ['approval-1', 'approval-2', 'approval-3'], countMetricId: 'chery-approval' },
+        month: { title: '本月成交 214 台，距离 250 台目标还差 36 台', description: '当前应优先处理高意向客户的报价与审批阻塞，而非单纯扩大线索量。', actionLabel: '查看经营明细', targetTab: 'approvals', filter: 'pending_approval', recordIds: ['approval-1', 'approval-2', 'approval-3'] },
+      },
     },
     workbenchTitle: '店长管理大屏',
     workbenchSubtitle: '本月全店目标完成率 86% · 团队高效运转',
@@ -154,10 +161,10 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'inventory', label: '配件雷达', iconName: 'Package' },
     ],
     workbenchMetrics: [
-      { label: '预约保养', value: '18台', color: 'text-blue-400', targetTab: 'service' },
-      { label: '车间维保中', value: '12台', color: 'text-emerald-400', targetTab: 'service' },
-      { label: '配件缺货预警', value: '2项', color: 'text-rose-400', targetTab: 'inventory' },
-      { label: 'NPS满意度', value: '98.6%', color: 'text-indigo-400' },
+      { id: 'chong-booking', label: '预约保养', unit: '台', values: { today: 18, seven_days: 116, month: 468 }, kind: 'process', definition: '已确认预约并等待接车的车辆', primary: true, targetTab: 'service', filter: 'service_booking', sampleRecordIds: ['service-1', 'service-2'] },
+      { id: 'chong-in-progress', label: '车间维保中', unit: '台', values: { today: 12, seven_days: 84, month: 338 }, kind: 'process', definition: '已接车并处于诊断、维修或复检状态的车辆', primary: true, targetTab: 'service', filter: 'service_in_progress', sampleRecordIds: ['service-2', 'service-3'] },
+      { id: 'chong-parts-risk', label: '配件缺货预警', unit: '项', values: { today: 2, seven_days: 5, month: 16 }, kind: 'risk', definition: '可能影响当前工位或承诺交期的关键配件', primary: false, targetTab: 'inventory', filter: 'parts_risk', sampleRecordIds: ['parts-1', 'parts-2'], linkedActionIds: ['parts-1', 'parts-2'] },
+      { id: 'chong-on-time', label: '准时完工率', unit: '%', values: { today: 96, seven_days: 95.4, month: 94.8 }, kind: 'quality', definition: '在承诺时间内完成维修并具备交车条件的工单比例', primary: false, targetTab: 'service', filter: 'on_time_completion', sampleRecordIds: ['service-2', 'service-3'] },
     ],
     workbenchPriorities: [
       {
@@ -182,9 +189,12 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'chong-1600', time: '16:00', title: '交车回访', subject: '3 位今日完工车主', description: '确认满意度并预约下次保养', status: '待开始', urgency: 'medium', targetTab: 'clients' },
     ],
     workbenchInsight: {
-      eyebrow: '服务质量', title: '车间准时完工率 96%，但配件缺货风险正在上升',
-      description: '先解决两项关键配件调拨，可避免下午两台车辆延期，保护当日 NPS。',
-      actionLabel: '查看配件预警', targetTab: 'inventory',
+      eyebrow: '待处理信号',
+      periods: {
+        today: { title: '{count} 项关键配件缺货，影响下午车辆排程', description: '先发起跨库调拨并确认到货时间，避免工位等待扩大。', actionLabel: '发起配件调拨', targetTab: 'inventory', filter: 'parts_risk', recordIds: ['parts-1', 'parts-2'], countMetricId: 'chong-parts-risk', resolvedTitle: '今日关键配件风险已响应', resolvedDescription: '调拨流程已发起；最终到货与完工时间仍需继续确认。' },
+        seven_days: { title: '近 7 天配件预警集中在两类高频维修项目', description: '处理当前风险后，可进一步复盘安全库存与调拨时效。', actionLabel: '查看配件风险', targetTab: 'inventory', filter: 'parts_risk', recordIds: ['parts-1', 'parts-2'], countMetricId: 'chong-parts-risk' },
+        month: { title: '本月准时完工率 94.8%，配件等待仍是主要阻塞', description: '从当前高影响缺货项开始闭环，再验证安全库存调整效果。', actionLabel: '查看配件风险', targetTab: 'inventory', filter: 'parts_risk', recordIds: ['parts-1', 'parts-2'] },
+      },
     },
     workbenchTitle: '售后维保工作台',
     workbenchSubtitle: '今日预约保养 18台 · 车间运转正常',
@@ -212,10 +222,10 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'inventory', label: '配额调拨', iconName: 'RefreshCw' },
     ],
     workbenchMetrics: [
-      { label: '大区今日销量', value: '68台', color: 'text-blue-400', targetTab: 'region' },
-      { label: '月完成率', value: '84.2%', color: 'text-emerald-400', targetTab: 'region' },
-      { label: '大区排名', value: 'No.1', color: 'text-amber-400', targetTab: 'region' },
-      { label: '预警异常门店', value: '1家', color: 'text-rose-400', targetTab: 'region' },
+      { id: 'feishi-sales', label: '大区销量', unit: '台', values: { today: 68, seven_days: 442, month: 1684 }, kind: 'result', definition: '所选周期内大区已形成有效订单的车辆数量', primary: true, targetTab: 'region', filter: 'regional_sales', sampleRecordIds: ['region-hefei', 'region-wuhu', 'region-nanjing'] },
+      { id: 'feishi-completion', label: '目标完成率', unit: '%', values: { today: 3.4, seven_days: 22.1, month: 84.2 }, kind: 'result', definition: '累计销量相对周期销售目标的完成比例', primary: true, targetTab: 'region', filter: 'target_completion', targetValues: { month: 100 } },
+      { id: 'feishi-ranking', label: '大区排名', unit: '名', values: { today: 1, seven_days: 1, month: 1 }, kind: 'quality', definition: '按销量与目标完成率综合计算的当前排名', primary: false, targetTab: 'region', filter: 'store_ranking', sampleRecordIds: ['region-wuhu', 'region-nanjing', 'region-hefei'] },
+      { id: 'feishi-abnormal', label: '异常门店', unit: '家', values: { today: 1, seven_days: 2, month: 3 }, kind: 'risk', definition: '关键转化或履约指标显著低于大区基线的门店', primary: false, targetTab: 'region', filter: 'abnormal_store', sampleRecordIds: ['region-hefei'], linkedActionIds: ['region-hefei'] },
     ],
     workbenchPriorities: [],
     workbenchSchedule: [
@@ -224,9 +234,12 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'feishi-1700', time: '17:00', title: '冲刺进度会', subject: '8 家门店店长', description: '确认明日重点客户与到店目标', status: '已排期', urgency: 'high', targetTab: 'region' },
     ],
     workbenchInsight: {
-      eyebrow: '大区经营', title: '销量排名 No.1，但试驾转订单转化仍有提升空间',
-      description: '将合肥门店拉回大区均值，即可增加约 6 台月度销量，不需要额外购买流量。',
-      actionLabel: '查看门店排名', targetTab: 'region',
+      eyebrow: '待决策信号',
+      periods: {
+        today: { title: '合肥门店试驾转订单低于大区均值 5.8 个百分点', description: '先发起经营复盘，确认人员承接、报价时效与库存匹配问题。', actionLabel: '发起经营复盘', targetTab: 'region', filter: 'abnormal_store', recordIds: ['region-hefei'], countMetricId: 'feishi-abnormal', resolvedTitle: '今日异常门店已进入复盘', resolvedDescription: '经营动作已确认；转化改善需在后续周期验证。' },
+        seven_days: { title: '近 7 天有 {count} 家门店低于关键转化基线', description: '优先处理偏差最大门店，并对照表现稳定门店的承接方式。', actionLabel: '查看异常门店', targetTab: 'region', filter: 'abnormal_store', recordIds: ['region-hefei'], countMetricId: 'feishi-abnormal' },
+        month: { title: '本月目标完成率 84.2%，门店间转化差异扩大', description: '在追加流量前，先闭环异常门店的现有客户承接问题。', actionLabel: '查看经营排名', targetTab: 'region', filter: 'store_ranking', recordIds: ['region-hefei', 'region-wuhu', 'region-nanjing'] },
+      },
     },
     workbenchTitle: '大区总监指挥舱',
     workbenchSubtitle: '华东一区 8家门店协同 · 本周冲刺 200台',
@@ -256,10 +269,10 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'clients', label: '待交车主', iconName: 'Users' },
     ],
     workbenchMetrics: [
-      { label: '待交付新车', value: '6台', color: 'text-blue-400', targetTab: 'orders' },
-      { label: '今日完成交付', value: '2台', color: 'text-emerald-400', targetTab: 'orders' },
-      { label: '保险临牌办理', value: '100%', color: 'text-amber-400' },
-      { label: '客户表扬', value: '5星', color: 'text-indigo-400' },
+      { id: 'liuyang-pending', label: '待交付新车', unit: '台', values: { today: 6, seven_days: 28, month: 112 }, kind: 'process', definition: '已锁单且仍需完成交付准备的车辆', primary: true, targetTab: 'orders', filter: 'delivery_pending', sampleRecordIds: ['delivery-docs-1', 'ord-1002'] },
+      { id: 'liuyang-completed', label: '完成交付', unit: '台', values: { today: 2, seven_days: 22, month: 86 }, kind: 'result', definition: '已由用户确认完成交车流程的车辆', primary: true, targetTab: 'orders', filter: 'delivery_completed' },
+      { id: 'liuyang-readiness', label: '资料齐套率', unit: '%', values: { today: 83, seven_days: 89, month: 94 }, kind: 'quality', definition: '计划交付车辆中资料已核验齐全的比例', primary: false, targetTab: 'orders', filter: 'document_readiness', sampleRecordIds: ['delivery-docs-1'] },
+      { id: 'liuyang-risk', label: '交付风险', unit: '台', values: { today: 1, seven_days: 3, month: 8 }, kind: 'risk', definition: '资料、PDI或资源条件可能影响承诺交车的车辆', primary: false, targetTab: 'orders', filter: 'delivery_risk', sampleRecordIds: ['delivery-docs-1'], linkedActionIds: ['delivery-docs-1'] },
     ],
     workbenchPriorities: [
       {
@@ -284,9 +297,12 @@ export const mockRoleAccounts: RoleAccount[] = [
       { id: 'liuyang-1700', time: '17:00', title: '交付后回访', subject: '今日交付车主', description: '确认上牌、保险与满意度', status: '待开始', urgency: 'medium', targetTab: 'clients' },
     ],
     workbenchInsight: {
-      eyebrow: '交付体验', title: '今日 6 台待交付，资料齐套率达到 83%',
-      description: '先完成陈建国订单资料核验，即可保障下午高规格交付按时开始。',
-      actionLabel: '查看待交付订单', targetTab: 'orders',
+      eyebrow: '待处理信号',
+      periods: {
+        today: { title: '{count} 台 15:30 交付车辆仍缺 1 项资料', description: '先核验保险与临牌资料，确保车辆具备进入交车流程的条件。', actionLabel: '补齐交付资料', targetTab: 'orders', filter: 'delivery_risk', recordIds: ['delivery-docs-1'], countMetricId: 'liuyang-risk', resolvedTitle: '今日高风险交付资料已核验', resolvedDescription: '资料条件已确认；正式交车仍需客户到店后完成。' },
+        seven_days: { title: '近 7 天共有 {count} 台交付曾出现准备风险', description: '先闭环当前资料缺口，再复盘资料收集与PDI前置节点。', actionLabel: '查看交付风险', targetTab: 'orders', filter: 'delivery_risk', recordIds: ['delivery-docs-1'], countMetricId: 'liuyang-risk' },
+        month: { title: '本月资料齐套率 94%，风险集中在交付前一天', description: '将保险、临牌与PDI核验前置到交付前一日可减少临场等待。', actionLabel: '查看待交付订单', targetTab: 'orders', filter: 'delivery_pending', recordIds: ['delivery-docs-1', 'ord-1002'] },
+      },
     },
     workbenchTitle: '交付专家工作台',
     workbenchSubtitle: '今日待交付 6台 · 仪式感准备就绪',
@@ -314,14 +330,42 @@ export const mockRoleAccounts: RoleAccount[] = [
     workbenchSchedule: [],
     workbenchInsight: {
       eyebrow: '产品运营',
-      title: '体验数据持续汇总中',
-      description: '请进入产品运营驾驶舱查看匿名行为数据。',
-      actionLabel: '查看驾驶舱',
-      targetTab: 'analytics',
+      periods: {
+        today: { title: '体验数据持续汇总中', description: '请进入产品运营驾驶舱查看匿名行为数据。', actionLabel: '查看驾驶舱', targetTab: 'analytics', filter: 'follow_up' },
+        seven_days: { title: '近 7 天体验数据持续汇总中', description: '请进入产品运营驾驶舱查看匿名行为数据。', actionLabel: '查看驾驶舱', targetTab: 'analytics', filter: 'follow_up' },
+        month: { title: '本月体验数据持续汇总中', description: '请进入产品运营驾驶舱查看匿名行为数据。', actionLabel: '查看驾驶舱', targetTab: 'analytics', filter: 'follow_up' },
+      },
     },
     workbenchTitle: '产品运营驾驶舱',
     workbenchSubtitle: '演示基线 + 本机实时行为',
   },
+];
+
+export const businessDemoRecords: BusinessDemoRecord[] = [
+  { id: 'kian-quote-c3', roleId: 'kian', module: 'clients', filters: ['pending_quote'], title: '报价方案待形成', subject: '约翰（John）· iCAR 03', description: '试驾已完成，需补充置换与分期组合方案。', meta: '今天 10:30 跟进 · 高意向', initialStatus: 'pending', actionType: 'quote', primaryActionLabel: '开立报价', confirmActionLabel: '生成报价', clientId: 'c-3' },
+  { id: 'kian-quote-c5', roleId: 'kian', module: 'clients', filters: ['pending_quote'], title: '报价方案待形成', subject: '周女士 · 风云 T9', description: '家庭增换购，需同时呈现置换补贴与月供。', meta: '今天 09:40 跟进 · 家庭决策', initialStatus: 'pending', actionType: 'quote', primaryActionLabel: '开立报价', confirmActionLabel: '生成报价', clientId: 'c-5' },
+  { id: 'kian-stock-1', roleId: 'kian', module: 'inventory', filters: ['vehicle_inventory'], title: '客户意向车可用', subject: '瑞虎 8 Pro Max · 极光黑', description: '门店现车，可锁定用于今日客户到店体验。', meta: 'VIN 尾号 8901 · 当前可用', initialStatus: 'pending', actionType: 'reserve', primaryActionLabel: '锁定车辆', confirmActionLabel: '确认锁定' },
+  { id: 'kian-stock-2', roleId: 'kian', module: 'inventory', filters: ['vehicle_inventory'], title: '试驾车辆已排期', subject: '星纪元 ES · 苍穹灰', description: '今日 14:30 已安排深度试驾，车辆整备完成。', meta: 'VIN 尾号 8902 · 已整备', initialStatus: 'completed', actionType: 'reserve', primaryActionLabel: '查看车辆', confirmActionLabel: '确认状态' },
+
+  { id: 'approval-1', roleId: 'chery', module: 'approvals', filters: ['pending_approval'], title: '临期报价审批', subject: '星纪元 ES · 金融权益组合', description: '超顾问权限 1.8%，方案将在 30 分钟后失效。', meta: '申请人：陈顾问 · 高优先级', initialStatus: 'pending', actionType: 'approve', primaryActionLabel: '开始审批', confirmActionLabel: '确认通过' },
+  { id: 'approval-2', roleId: 'chery', module: 'approvals', filters: ['pending_approval'], title: '置换补贴审批', subject: '瑞虎 8 Pro Max · 旧车置换', description: '需确认门店追加补贴与库存绑定。', meta: '申请人：王顾问 · 今日提交', initialStatus: 'pending', actionType: 'approve', primaryActionLabel: '开始审批', confirmActionLabel: '确认通过' },
+  { id: 'approval-3', roleId: 'chery', module: 'approvals', filters: ['pending_approval'], title: '企业客户权益审批', subject: '风云 T9 · 2 台采购', description: '需确认企业客户随车权益与交付窗口。', meta: '申请人：刘顾问 · 普通优先级', initialStatus: 'pending', actionType: 'approve', primaryActionLabel: '开始审批', confirmActionLabel: '确认通过' },
+  { id: 'store-car-1', roleId: 'chery', module: 'inventory', filters: ['vehicle_inventory'], title: '展厅现车', subject: '星纪元 ES · 苍穹灰', description: '展车，可在 16:00 后切换为试驾资源。', meta: '展厅 A 位 · 当前可用', initialStatus: 'pending', actionType: 'reserve', primaryActionLabel: '锁定资源', confirmActionLabel: '确认锁定' },
+  { id: 'store-car-2', roleId: 'chery', module: 'inventory', filters: ['vehicle_inventory'], title: '试驾资源', subject: '瑞虎 8 Pro Max · 极光黑', description: '今日已排 2 场试驾，18:00 后可用。', meta: '试驾车 02 · 排期正常', initialStatus: 'pending', actionType: 'reserve', primaryActionLabel: '查看排期', confirmActionLabel: '确认调整' },
+  { id: 'store-car-3', roleId: 'chery', module: 'inventory', filters: ['vehicle_inventory'], title: '待交付现车', subject: '风云 T9 · 云影灰', description: '已匹配客户，等待交付资料齐套。', meta: '交付区 B · 已绑定', initialStatus: 'pending', actionType: 'reserve', primaryActionLabel: '查看车辆', confirmActionLabel: '确认状态' },
+
+  { id: 'service-1', roleId: 'chong', module: 'service', filters: ['service_booking'], title: '预约待接车', subject: '李女士 · 瑞虎 8 Pro Max', description: '首保预约，车辆已到店，等待服务顾问接车。', meta: '10:00 · 工位 03', initialStatus: 'pending', actionType: 'service', primaryActionLabel: '开始接车', confirmActionLabel: '确认接车' },
+  { id: 'service-2', roleId: 'chong', module: 'service', filters: ['service_booking', 'service_in_progress', 'on_time_completion'], title: '维保进行中', subject: '王先生 · iCAR 03', description: '雨刮电机更换后等待复检。', meta: '预计 13:20 完工 · 工位 05', initialStatus: 'in_progress', actionType: 'service', primaryActionLabel: '查看工单', confirmActionLabel: '确认完工' },
+  { id: 'service-3', roleId: 'chong', module: 'service', filters: ['service_in_progress', 'on_time_completion'], title: '故障诊断中', subject: '赵先生 · 星纪元 ET', description: '已完成初检，等待诊断结果确认。', meta: '预计 15:00 完工 · 工位 08', initialStatus: 'in_progress', actionType: 'service', primaryActionLabel: '查看工单', confirmActionLabel: '确认完工' },
+  { id: 'parts-1', roleId: 'chong', module: 'inventory', filters: ['parts_risk'], title: '关键配件缺货', subject: '雨刮电机总成 · 2 件', description: '影响下午 2 台车辆完工承诺，附近仓有可调库存。', meta: '预计调拨 90 分钟 · 高影响', initialStatus: 'pending', actionType: 'transfer', primaryActionLabel: '发起调拨', confirmActionLabel: '确认已发起' },
+  { id: 'parts-2', roleId: 'chong', module: 'inventory', filters: ['parts_risk'], title: '关键配件低库存', subject: '前雷达支架 · 1 件', description: '当前工单已占用最后库存，需补充安全库存。', meta: '中心仓可用 4 件 · 中影响', initialStatus: 'pending', actionType: 'transfer', primaryActionLabel: '发起调拨', confirmActionLabel: '确认已发起' },
+
+  { id: 'region-wuhu', roleId: 'feishi', module: 'region', filters: ['regional_sales', 'store_ranking'], title: '门店经营排名 No.1', subject: '芜湖体验中心', description: '销量与试驾转订单均高于大区基线。', meta: '月完成率 91.3% · 稳定', initialStatus: 'completed', actionType: 'review', primaryActionLabel: '查看门店', confirmActionLabel: '确认复盘' },
+  { id: 'region-nanjing', roleId: 'feishi', module: 'region', filters: ['regional_sales', 'store_ranking'], title: '门店经营排名 No.2', subject: '南京体验中心', description: '客流稳定，报价外发时效仍可优化。', meta: '月完成率 87.8% · 正常', initialStatus: 'completed', actionType: 'review', primaryActionLabel: '查看门店', confirmActionLabel: '确认复盘' },
+  { id: 'region-hefei', roleId: 'feishi', module: 'region', filters: ['regional_sales', 'store_ranking', 'abnormal_store'], title: '转化异常门店', subject: '合肥体验中心', description: '试驾转订单低于大区均值 5.8 个百分点。', meta: '月完成率 72.4% · 需介入', initialStatus: 'pending', actionType: 'review', primaryActionLabel: '发起复盘', confirmActionLabel: '确认已复盘' },
+  { id: 'allocation-1', roleId: 'feishi', module: 'inventory', filters: ['regional_sales'], title: '大区配额待分配', subject: '星纪元 ES · 4 台资源', description: '建议按有效订单与承诺交期分配至三家门店。', meta: '华东库存池 · 今日决策', initialStatus: 'pending', actionType: 'allocate', primaryActionLabel: '开始分配', confirmActionLabel: '确认提交' },
+
+  { id: 'delivery-docs-1', roleId: 'liuyang', module: 'orders', filters: ['delivery_pending', 'document_readiness', 'delivery_risk'], title: '交付资料待补齐', subject: '陈建国 · 星纪元 ET Pro', description: '保险与临牌资料缺 1 项，影响 15:30 交车准备。', meta: '15:30 交付 · 高风险', initialStatus: 'pending', actionType: 'verify', primaryActionLabel: '开始核验', confirmActionLabel: '确认资料齐全' },
 ];
 
 export const initialAdvisorProfile: AdvisorProfile = {
@@ -600,6 +644,41 @@ export const mockClients: ClientRecord[] = [
       sms: true,
       dataCrossBorder: true,
     },
+  },
+  {
+    id: 'c-5',
+    customerGlobalId: 'GLOBAL-C88106',
+    name: '周女士',
+    phone: '13955118826',
+    countryCode: '+86',
+    intentCar: '风云 T9',
+    status: '方案报价',
+    opportunityStage: 'L3 已报价',
+    lastContact: '今天 09:40',
+    budget: '16-19 万',
+    avatarBg: 'bg-cyan-600',
+    channelOrigin: {
+      category: '品牌展厅',
+      platform: '门店到访',
+      campaign: '家庭增换购体验',
+      formVersion: 'V1 Form',
+      createdTime: '2026-08-14 09:10',
+    },
+    slaStatus: 'normal',
+    slaCountdownMinutes: 90,
+    householdRole: '家庭共同决策人',
+    consentMap: {
+      whatsapp: true,
+      phoneCall: true,
+      sms: true,
+      dataCrossBorder: false,
+    },
+    tradeInCar: {
+      brandModel: '宋 Pro 2020',
+      year: 2020,
+      estimatedValue: '5.2 万',
+    },
+    matchedVehicle: mockVehicles[0],
   },
 ];
 

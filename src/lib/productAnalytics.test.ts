@@ -38,4 +38,16 @@ describe('workbench closure analytics', () => {
       Object.values(event.properties || {}).forEach((value) => expect(typeof value).toBe('string'));
     });
   });
+
+  it('keeps operating actions enum-only and distinct from business outcomes', () => {
+    const events = getDemoAnalyticsEvents().filter((event) => event.action === 'business_action_confirmed');
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((event) => (
+      event.module === 'business_operations'
+      && event.status === 'succeeded'
+      && event.trustLevel === 'verified_behavior'
+      && ['approve', 'transfer', 'review', 'verify'].includes(String(event.properties?.businessAction))
+      && Object.keys(event.properties || {}).every((key) => ['target', 'businessAction'].includes(key))
+    ))).toBe(true);
+  });
 });

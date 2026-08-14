@@ -5,9 +5,10 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onResetWorkbenchDemo: () => void;
+  onResetOperatingDemo: () => void;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onResetWorkbenchDemo }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onResetWorkbenchDemo, onResetOperatingDemo }) => {
   const [haptic, setHaptic] = useState(true);
   const [sound, setSound] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -128,6 +129,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
               <button
                 type="button"
                 onClick={onResetWorkbenchDemo}
+                className="min-h-8 text-xs font-semibold text-[#1a6fd4] cursor-pointer hover:underline"
+              >
+                重置
+              </button>
+            </div>
+
+            <div className="p-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-4.5 h-4.5 text-gray-600" />
+                <div>
+                  <div className="text-xs font-bold text-gray-900">重置经营演示数据</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">恢复审批、调拨、复盘与资料核验状态</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onResetOperatingDemo}
                 className="min-h-8 text-xs font-semibold text-[#1a6fd4] cursor-pointer hover:underline"
               >
                 重置

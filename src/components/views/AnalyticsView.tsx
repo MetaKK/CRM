@@ -81,6 +81,7 @@ const isDownstreamModule = (event: ProductAnalyticsEvent) => (
   event.action === 'client_opened' || event.action === 'quote_opened'
   || (event.module === 'order_delivery' && event.action === 'page_viewed')
   || event.action === 'test_drive_booked' || event.action === 'delivery_started'
+  || event.action === 'business_action_started' || event.action === 'business_action_confirmed'
   || (event.module === 'work_essential' && event.action === 'page_viewed')
   || event.action === 'quick_action_started'
 );
@@ -93,7 +94,7 @@ const getGenericFunnel = (events: ProductAnalyticsEvent[]) => calculateOrderedFu
 
 const getEffectiveWorkSessions = (events: ProductAnalyticsEvent[]) => calculateOrderedFunnel(events, [
   { id: 'workbench', matches: isWorkbenchEntry },
-  { id: 'core-action', matches: (event) => isFocusOpened(event) || isDownstreamModule(event) || event.action === 'tool_launched' },
+  { id: 'core-action', matches: (event) => isFocusOpened(event) || isDownstreamModule(event) || event.action === 'tool_launched' || event.action === 'operating_metric_opened' },
 ]);
 
 const salesFunnel = (events: ProductAnalyticsEvent[]) => calculateOrderedFunnel(events, [
@@ -115,23 +116,21 @@ const roleJourney = (events: ProductAnalyticsEvent[], role: AnalyticsRoleType) =
       rateLabel: '销售下一步意图率',
     };
   }
-  const definitions: Record<Exclude<AnalyticsRoleType, 'product_expert' | 'product_operations'>, { title: string; labels: string[]; start: (event: ProductAnalyticsEvent) => boolean }> = {
-    store_manager: { title: '店长 · 经营决策流程', labels: ['工作台', '进入经营模块', '决策流程发起'], start: (event) => event.action === 'quick_action_started' },
-    regional_director: { title: '大区总监 · 经营决策流程', labels: ['工作台', '进入经营模块', '决策流程发起'], start: (event) => event.action === 'quick_action_started' },
-    service_manager: { title: '售后经理 · 服务流程', labels: ['工作台', '进入服务模块', '流程发起'], start: (event) => event.action === 'test_drive_booked' },
-    delivery_specialist: { title: '交付专员 · 交付流程', labels: ['工作台', '进入订单模块', '流程发起'], start: (event) => event.action === 'delivery_started' },
+  const definitions: Record<Exclude<AnalyticsRoleType, 'product_expert' | 'product_operations'>, { title: string; labels: string[] }> = {
+    store_manager: { title: '店长 · 经营决策流程', labels: ['工作台', '经营动作发起', '用户确认处理'] },
+    regional_director: { title: '大区总监 · 经营决策流程', labels: ['工作台', '经营复盘发起', '用户确认处理'] },
+    service_manager: { title: '售后经理 · 服务流程', labels: ['工作台', '服务动作发起', '用户确认处理'] },
+    delivery_specialist: { title: '交付专员 · 交付流程', labels: ['工作台', '交付核验发起', '用户确认处理'] },
   };
   const config = definitions[role];
   const result = calculateOrderedFunnel(events, [
     { id: 'workbench', matches: isWorkbenchEntry },
-    { id: 'module', matches: (event) => role === 'service_manager' || role === 'delivery_specialist'
-      ? event.module === 'order_delivery' && event.action === 'page_viewed'
-      : event.module === 'work_essential' && event.action === 'page_viewed' },
-    { id: 'start', matches: config.start },
+    { id: 'start', matches: (event) => event.action === 'business_action_started' },
+    { id: 'confirmed', matches: (event) => event.action === 'business_action_confirmed' },
   ]);
   return {
     title: config.title,
-    description: '仅记录流程发起；当前界面尚无可验证的完成状态。',
+    description: '“用户确认处理”是可验证界面行为；不代表真实审批生效、到货、成交或交付完成。',
     steps: config.labels.map((label, index) => ({ label, count: result.counts[index], proxy: index > 0 })),
     rate: percent(result.counts[2], result.counts[0]),
     rateLabel: '流程发起率',
@@ -146,6 +145,7 @@ const featureDefinitions = [
   { label: '客户 360', matches: (event: ProductAnalyticsEvent) => event.module === 'client_360' },
   { label: '报价', matches: (event: ProductAnalyticsEvent) => event.module === 'quote' },
   { label: '试驾 / 订单', matches: (event: ProductAnalyticsEvent) => event.module === 'test_drive' || event.module === 'order_delivery' },
+  { label: '经营模块', matches: (event: ProductAnalyticsEvent) => event.module === 'business_operations' },
   { label: '小万', matches: (event: ProductAnalyticsEvent) => event.module === 'xiaowan' },
 ];
 

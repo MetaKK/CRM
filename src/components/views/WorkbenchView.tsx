@@ -22,14 +22,19 @@ import { getWorkbenchTaskState } from '../../lib/workbenchTasks';
 import {
   AppTool,
   ClientRecord,
+  OperatingDemoSnapshot,
+  OperatingPeriod,
   RoleAccount,
   TabType,
+  WorkbenchInsightPeriod,
+  WorkbenchOperatingMetric,
   WorkbenchPriority,
   WorkbenchScheduleItem,
   WorkbenchSectionId,
   WorkbenchTaskReference,
   WorkbenchTaskSnapshot,
 } from '../../types';
+import { formatOperatingValue, getInsightPresentation, getOperatingMetricValue, operatingPeriodLabels } from '../../lib/operatingDemo';
 import { getAppToolIcon } from '../appTools';
 
 interface WorkbenchViewProps {
@@ -57,6 +62,12 @@ interface WorkbenchViewProps {
   autoPromoteEnabled: boolean;
   autoPromotionPaused: boolean;
   taskSnapshot: WorkbenchTaskSnapshot;
+  operatingPeriod: OperatingPeriod;
+  operatingSnapshot: OperatingDemoSnapshot;
+  onOperatingPeriodChange: (period: OperatingPeriod) => void;
+  onOperatingMetricOpen: (metric: WorkbenchOperatingMetric, period: OperatingPeriod) => void;
+  onOperatingOverviewOpen: (period: OperatingPeriod) => void;
+  onOperatingInsightOpen: (insight: WorkbenchInsightPeriod & { resolved: boolean }, period: OperatingPeriod) => void;
 }
 
 type FocusTab = 'priority' | 'schedule';
@@ -156,6 +167,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   autoPromoteEnabled,
   autoPromotionPaused,
   taskSnapshot,
+  operatingPeriod,
+  operatingSnapshot,
+  onOperatingPeriodChange,
+  onOperatingMetricOpen,
+  onOperatingOverviewOpen,
+  onOperatingInsightOpen,
 }) => {
   const [focusTab, setFocusTab] = useState<FocusTab>('priority');
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
@@ -577,42 +594,82 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     </section>
   );
 
-  const renderPulse = () => (
-    <section className="crm-card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-5 pr-16 pt-4">
-        <div>
-          <h2 className="text-[16px] font-bold text-slate-900">经营概览</h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">两个结果指标，加一条最需要决策的经营信号</p>
+  const renderPulse = () => {
+    const metrics = currentAccount.workbenchMetrics.filter((metric) => metric.primary).slice(0, 2);
+    const insight = getInsightPresentation(currentAccount, operatingPeriod, operatingSnapshot);
+    return (
+      <section className="crm-card overflow-hidden">
+        <div className="flex items-start justify-between gap-3 px-5 pr-16 pt-4 pb-3">
+          <div className="min-w-0">
+            <h2 className="text-[16px] font-bold text-slate-900">经营概览</h2>
+            <p className="mt-0.5 truncate text-[11px] text-slate-400">{operatingPeriodLabels[operatingPeriod]}关键结果与待处理信号</p>
+          </div>
+          <label className="relative mt-0.5 shrink-0">
+            <span className="sr-only">经营数据时间范围</span>
+            <select
+              value={operatingPeriod}
+              onChange={(event) => onOperatingPeriodChange(event.target.value as OperatingPeriod)}
+              className="h-8 appearance-none rounded-lg border border-[#dce6f1] bg-white pl-2.5 pr-7 text-[10px] font-semibold text-[#5a6a88] cursor-pointer"
+            >
+              <option value="today">今日</option>
+              <option value="seven_days">近 7 天</option>
+              <option value="month">本月</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5 text-[#8a9ab8]" />
+          </label>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-1 border-t border-[#f0f3f9] px-4 py-4">
-        {currentAccount.workbenchMetrics.slice(0, 2).map((metric) => (
-          <button
-            key={metric.label}
-            onClick={() => metric.targetTab && onNavigateToTab(metric.targetTab)}
-            className="min-w-0 text-center cursor-pointer active:scale-95 transition-transform"
-          >
-            <span className="block truncate text-[11px] text-slate-400">{metric.label}</span>
-            <strong className="mt-1.5 block truncate text-[22px] leading-none font-bold text-slate-900">{metric.value}</strong>
-          </button>
-        ))}
-      </div>
+        <div className="grid grid-cols-2 divide-x divide-[#eaf0f7] border-t border-[#eaf0f7] px-3 py-4">
+          {metrics.map((metric) => {
+            const value = getOperatingMetricValue(metric, operatingPeriod, operatingSnapshot);
+            return (
+              <button
+                key={metric.id}
+                type="button"
+                onClick={() => onOperatingMetricOpen(metric, operatingPeriod)}
+                aria-label={`查看${operatingPeriodLabels[operatingPeriod]}${metric.label}明细`}
+                className="group min-w-0 px-2 text-center cursor-pointer active:scale-[0.98] transition-transform"
+              >
+                <span className="flex items-center justify-center gap-0.5 truncate text-[11px] text-slate-400 group-hover:text-[#1a6fd4]">
+                  {metric.label}<ChevronRight className="h-3 w-3 shrink-0" />
+                </span>
+                <span className="mt-1.5 flex items-baseline justify-center gap-1">
+                  <strong className="truncate text-[22px] leading-none font-bold text-slate-900">{formatOperatingValue(value)}</strong>
+                  {metric.unit && <span className="text-[10px] text-[#8a9ab8]">{metric.unit}</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-      <button
-        onClick={() => currentAccount.workbenchInsight.targetTab && onNavigateToTab(currentAccount.workbenchInsight.targetTab)}
-        className="flex w-full items-start gap-3 border-t border-[#f0f3f9] bg-[#f8fbff] px-5 py-3.5 text-left cursor-pointer hover:bg-blue-50/50"
-      >
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1a6fd4]"><Sparkles className="h-4 w-4" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[10px] font-medium text-[#1a6fd4]">{currentAccount.workbenchInsight.eyebrow}</span>
-          <strong className="mt-0.5 block text-[12px] text-slate-800">{currentAccount.workbenchInsight.title}</strong>
-          <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{currentAccount.workbenchInsight.description}</span>
-        </span>
-        <span className="self-center shrink-0 text-[11px] font-medium text-[#1a6fd4]">{currentAccount.workbenchInsight.actionLabel}</span>
-      </button>
-    </section>
-  );
+        <button
+          type="button"
+          onClick={() => onOperatingOverviewOpen(operatingPeriod)}
+          className="flex min-h-10 w-full items-center justify-center gap-1 border-t border-[#eaf0f7] bg-white text-[11px] font-medium text-[#5a6a88] cursor-pointer hover:text-[#1a6fd4]"
+        >
+          查看全部经营数据<ChevronRight className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOperatingInsightOpen(insight, operatingPeriod)}
+          className="flex w-full items-start gap-3 border-t border-[#eaf0f7] bg-[#f8fbff] px-5 py-3.5 text-left cursor-pointer hover:bg-blue-50/50"
+        >
+          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${insight.resolved ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-[#1a6fd4]'}`}>
+            {insight.resolved ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-medium text-[#1a6fd4]">{currentAccount.workbenchInsight.eyebrow}</span>
+            <strong className="mt-0.5 block text-[12px] leading-snug text-slate-800">{insight.title}</strong>
+            <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{insight.description}</span>
+          </span>
+          <span className="flex max-w-[112px] shrink-0 items-center self-center whitespace-nowrap text-right text-[11px] font-medium leading-snug text-[#1a6fd4]">
+            {insight.actionLabel}<ChevronRight className="h-3.5 w-3.5 shrink-0" />
+          </span>
+        </button>
+      </section>
+    );
+  };
 
   const renderTools = () => (
     <section className="crm-card">

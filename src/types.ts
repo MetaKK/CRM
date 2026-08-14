@@ -21,12 +21,7 @@ export interface RoleAccount {
     hasSparkle?: boolean;
     badge?: number;
   }[];
-  workbenchMetrics: {
-    label: string;
-    value: string | number;
-    color: string;
-    targetTab?: TabType;
-  }[];
+  workbenchMetrics: WorkbenchOperatingMetric[];
   workbenchPriorities: WorkbenchPriority[];
   workbenchSchedule: WorkbenchScheduleItem[];
   workbenchInsight: WorkbenchInsight;
@@ -91,10 +86,91 @@ export interface WorkbenchTaskSnapshot {
 
 export interface WorkbenchInsight {
   eyebrow: string;
+  periods: Record<OperatingPeriod, WorkbenchInsightPeriod>;
+}
+
+export type OperatingPeriod = 'today' | 'seven_days' | 'month';
+export type OperatingMetricKind = 'result' | 'process' | 'risk' | 'inventory' | 'quality';
+export type OperatingMetricFilter =
+  | 'follow_up'
+  | 'test_drive'
+  | 'pending_quote'
+  | 'arrival'
+  | 'store_visit'
+  | 'deal'
+  | 'pending_approval'
+  | 'vehicle_inventory'
+  | 'service_booking'
+  | 'service_in_progress'
+  | 'parts_risk'
+  | 'on_time_completion'
+  | 'regional_sales'
+  | 'target_completion'
+  | 'store_ranking'
+  | 'abnormal_store'
+  | 'delivery_pending'
+  | 'delivery_completed'
+  | 'document_readiness'
+  | 'delivery_risk';
+
+export interface WorkbenchOperatingMetric {
+  id: string;
+  label: string;
+  unit?: string;
+  values: Record<OperatingPeriod, number>;
+  kind: OperatingMetricKind;
+  definition: string;
+  primary: boolean;
+  targetTab: TabType;
+  filter: OperatingMetricFilter;
+  sampleRecordIds?: string[];
+  linkedActionIds?: string[];
+  targetValues?: Partial<Record<OperatingPeriod, number>>;
+}
+
+export interface WorkbenchInsightPeriod {
   title: string;
   description: string;
   actionLabel: string;
-  targetTab?: TabType;
+  targetTab: TabType;
+  filter: OperatingMetricFilter;
+  recordIds?: string[];
+  countMetricId?: string;
+  resolvedTitle?: string;
+  resolvedDescription?: string;
+}
+
+export type BusinessRecordStatus = 'pending' | 'in_progress' | 'completed' | 'rejected';
+export type BusinessActionType = 'quote' | 'approve' | 'transfer' | 'review' | 'verify' | 'service' | 'allocate' | 'reserve';
+
+export interface BusinessDemoRecord {
+  id: string;
+  roleId: string;
+  module: Extract<TabType, 'clients' | 'orders' | 'approvals' | 'inventory' | 'service' | 'region'>;
+  filters: OperatingMetricFilter[];
+  title: string;
+  subject: string;
+  description: string;
+  meta: string;
+  initialStatus: BusinessRecordStatus;
+  actionType: BusinessActionType;
+  primaryActionLabel: string;
+  confirmActionLabel: string;
+  clientId?: string;
+}
+
+export interface OperatingDemoSnapshot {
+  schemaVersion: 1;
+  accountId: string;
+  dateKey: string;
+  records: Record<string, BusinessRecordStatus>;
+}
+
+export interface BusinessNavigationIntent {
+  tab: TabType;
+  source: 'metric' | 'insight' | 'overview' | 'task' | 'tool';
+  filter?: OperatingMetricFilter;
+  recordIds?: string[];
 }
 
 export type TabType =
@@ -105,11 +181,11 @@ export type TabType =
   | 'clients'
   | 'testdrive'
   | 'orders'
-  | 'team'
   | 'approvals'
   | 'inventory'
   | 'service'
-  | 'region';
+  | 'region'
+  | 'team';
 
 export interface AdvisorProfile {
   name: string;
@@ -310,6 +386,7 @@ export type AnalyticsModule =
   | 'quote'
   | 'test_drive'
   | 'order_delivery'
+  | 'business_operations'
   | 'xiaowan'
   | 'analytics';
 
@@ -359,7 +436,14 @@ export type AnalyticsAction =
   | 'message_sent'
   | 'voice_started'
   | 'period_changed'
-  | 'source_explained';
+  | 'source_explained'
+  | 'operating_period_changed'
+  | 'operating_metric_opened'
+  | 'operating_overview_opened'
+  | 'operating_signal_opened'
+  | 'business_action_started'
+  | 'business_action_confirmed'
+  | 'business_action_reopened';
 
 export type AnalyticsEventStatus =
   | 'viewed'
@@ -378,6 +462,10 @@ export type AnalyticsPropertyValue =
   | 'clients'
   | 'testdrive'
   | 'orders'
+  | 'approvals'
+  | 'inventory'
+  | 'service'
+  | 'region'
   | 'app_center'
   | 'work_essential'
   | 'quote'
@@ -420,6 +508,8 @@ export interface ProductAnalyticsEvent {
     configurationAction?: 'add' | 'remove' | 'reorder';
     toolType?: 'quote_card' | 'tool' | 'lab_tool';
     toggleState?: 'enabled' | 'disabled';
+    period?: OperatingPeriod;
+    businessAction?: BusinessActionType;
   };
 }
 

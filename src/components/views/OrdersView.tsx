@@ -1,14 +1,37 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
-import { mockOrders } from '../../data/mockData';
+import { Check, Plus, RotateCcw } from 'lucide-react';
+import { businessDemoRecords, mockOrders } from '../../data/mockData';
+import { BusinessDemoRecord, BusinessNavigationIntent, BusinessRecordStatus, OperatingDemoSnapshot } from '../../types';
+import { getOperatingRecordStatus } from '../../lib/operatingDemo';
 
 interface OrdersViewProps {
   onOrderCreated?: () => void;
   onContractOpened?: () => void;
   onDeliveryStarted?: () => void;
+  accountId?: string;
+  operatingSnapshot?: OperatingDemoSnapshot;
+  navigationIntent?: BusinessNavigationIntent | null;
+  onBusinessStatusChange?: (record: BusinessDemoRecord, status: BusinessRecordStatus) => void;
 }
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ onOrderCreated, onContractOpened, onDeliveryStarted }) => {
+export const OrdersView: React.FC<OrdersViewProps> = ({
+  onOrderCreated,
+  onContractOpened,
+  onDeliveryStarted,
+  accountId,
+  operatingSnapshot,
+  navigationIntent,
+  onBusinessStatusChange,
+}) => {
+  const focusedIds = navigationIntent?.tab === 'orders' && navigationIntent.recordIds?.length
+    ? new Set(navigationIntent.recordIds)
+    : null;
+  const operatingRecords = businessDemoRecords.filter((record) => (
+    record.roleId === accountId
+    && record.module === 'orders'
+    && (!focusedIds || focusedIds.has(record.id))
+  ));
+
   return (
     <div className="crm-page space-y-3.5 select-none">
       {/* Header */}
@@ -28,6 +51,39 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onOrderCreated, onContra
           新建订单
         </button>
       </div>
+
+      {operatingRecords.length > 0 && operatingSnapshot && onBusinessStatusChange && (
+        <div className="space-y-2.5">
+          {focusedIds && (
+            <div className="rounded-xl border border-[#cfe2f5] bg-[#f3f8fe] px-3.5 py-2.5 text-[11px] text-[#5a6a88]">
+              <strong className="text-[#1a6fd4]">来自经营概览</strong> · 已定位当前交付风险
+            </div>
+          )}
+          {operatingRecords.map((record) => {
+            const status = getOperatingRecordStatus(operatingSnapshot, record);
+            return (
+              <article key={record.id} className="crm-card border-[#cfe2f5] bg-[#f8fbff] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-semibold text-[#1a6fd4]">{record.title}</span>
+                    <h3 className="mt-1 truncate text-[14px] font-bold text-[#1a2438]">{record.subject}</h3>
+                  </div>
+                  <span className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-semibold ${status === 'completed' ? 'bg-emerald-50 text-emerald-700' : status === 'in_progress' ? 'bg-blue-50 text-[#1a6fd4]' : 'bg-amber-50 text-amber-700'}`}>
+                    {status === 'completed' ? '资料已确认' : status === 'in_progress' ? '核验中' : '待核验'}
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-[#5a6a88]">{record.description}</p>
+                <p className="mt-2 text-[10px] text-[#8a9ab8]">{record.meta}</p>
+                <div className="mt-3 flex justify-end">
+                  {status === 'pending' && <button type="button" onClick={() => onBusinessStatusChange(record, 'in_progress')} className="min-h-9 rounded-lg bg-[#1a6fd4] px-3 text-[11px] font-semibold text-white cursor-pointer">{record.primaryActionLabel}</button>}
+                  {status === 'in_progress' && <button type="button" onClick={() => onBusinessStatusChange(record, 'completed')} className="flex min-h-9 items-center gap-1 rounded-lg bg-[#1a6fd4] px-3 text-[11px] font-semibold text-white cursor-pointer"><Check className="h-3.5 w-3.5" />{record.confirmActionLabel}</button>}
+                  {status === 'completed' && <button type="button" onClick={() => onBusinessStatusChange(record, 'in_progress')} className="flex min-h-9 items-center gap-1 rounded-lg border border-[#dce6f1] bg-white px-3 text-[11px] font-semibold text-[#1a6fd4] cursor-pointer"><RotateCcw className="h-3.5 w-3.5" />恢复核验</button>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
       {/* Orders List - iOS Inset Grouped */}
       <div className="space-y-2.5 pt-0.5">

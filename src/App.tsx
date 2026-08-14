@@ -17,6 +17,13 @@ import {
   WorkbenchTaskState,
   ProductAnalyticsEvent,
   RoleAccount,
+  BusinessDemoRecord,
+  BusinessNavigationIntent,
+  BusinessRecordStatus,
+  OperatingDemoSnapshot,
+  OperatingPeriod,
+  WorkbenchInsightPeriod,
+  WorkbenchOperatingMetric,
 } from './types';
 import {
   defaultQuickToolIdsByRole,
@@ -27,6 +34,7 @@ import {
   mockAppTools,
   frontlineLabTools,
   mockRoleAccounts,
+  businessDemoRecords,
 } from './data/mockData';
 import {
   MAX_QUICK_TOOLS,
@@ -47,6 +55,17 @@ import {
   startWorkbenchTask,
   unpinScheduleTask,
 } from './lib/workbenchTasks';
+import {
+  createInitialOperatingSnapshot,
+  getOperatingRecordStatus,
+  isOperatingRecordResolved,
+  readOperatingPeriod,
+  readOperatingSnapshot,
+  resetOperatingSnapshots,
+  saveOperatingPeriod,
+  saveOperatingSnapshot,
+  updateOperatingRecord,
+} from './lib/operatingDemo';
 import {
   getAnalyticsActorType,
   getAnalyticsJourney,
@@ -70,6 +89,7 @@ import { SettingsModal } from './components/modals/SettingsModal';
 import { DetailListModal } from './components/modals/DetailListModal';
 import { ClientDetailModal } from './components/modals/ClientDetailModal';
 import { QuoteBuilderModal } from './components/modals/QuoteBuilderModal';
+import { OperatingOverviewModal } from './components/modals/OperatingOverviewModal';
 
 // Views for tabs
 import { XiaowanView } from './components/views/XiaowanView';
@@ -79,6 +99,7 @@ import { TestDriveView } from './components/views/TestDriveView';
 import { OrdersView } from './components/views/OrdersView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 import { AppCenterView } from './components/views/AppCenterView';
+import { BusinessModuleView } from './components/views/BusinessModuleView';
 
 const getAvailableTools = (accountId: string) =>
   mockAppTools.filter((tool) => !tool.roleIds?.length || tool.roleIds.includes(accountId));
@@ -92,10 +113,10 @@ const analyticsModuleByTab: Record<TabType, ProductAnalyticsEvent['module']> = {
   testdrive: 'test_drive',
   orders: 'order_delivery',
   team: 'workbench',
-  approvals: 'order_delivery',
-  inventory: 'work_essential',
-  service: 'order_delivery',
-  region: 'workbench',
+  approvals: 'business_operations',
+  inventory: 'business_operations',
+  service: 'business_operations',
+  region: 'business_operations',
 };
 
 const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalyticsEvent['properties']>['target']>> = {
@@ -106,7 +127,10 @@ const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalytics
   clients: 'clients',
   testdrive: 'testdrive',
   orders: 'orders',
-  inventory: 'work_essential',
+  approvals: 'approvals',
+  inventory: 'inventory',
+  service: 'service',
+  region: 'region',
 };
 
 type AnalyticsPayload = Pick<ProductAnalyticsEvent, 'module' | 'action' | 'status' | 'trustLevel' | 'properties'>;
@@ -140,6 +164,15 @@ export default function App() {
   const activeTaskSnapshot = workbenchTaskSnapshot.accountId === currentAccount.id
     ? workbenchTaskSnapshot
     : createInitialWorkbenchTaskSnapshot(currentAccount);
+  const [operatingSnapshot, setOperatingSnapshot] = useState<OperatingDemoSnapshot>(() => (
+    readOperatingSnapshot('kian')
+  ));
+  const activeOperatingSnapshot = operatingSnapshot.accountId === currentAccount.id
+    ? operatingSnapshot
+    : createInitialOperatingSnapshot(currentAccount.id);
+  const [operatingPeriod, setOperatingPeriod] = useState<OperatingPeriod>(() => readOperatingPeriod('kian'));
+  const [isOperatingOverviewOpen, setIsOperatingOverviewOpen] = useState(false);
+  const [businessNavigationIntent, setBusinessNavigationIntent] = useState<BusinessNavigationIntent | null>(null);
   const promotedPriorities = currentAccount.workbenchSchedule.flatMap((item) => {
     const state = getWorkbenchTaskState(activeTaskSnapshot, { kind: 'schedule', id: item.id });
     if (!state.focused || state.status === 'completed') return [];
@@ -416,6 +449,91 @@ export default function App() {
     showToast('已恢复为处理中');
   };
 
+  const updateOperatingSnapshotState = (
+    update: (snapshot: OperatingDemoSnapshot) => OperatingDemoSnapshot,
+  ) => {
+    setOperatingSnapshot((current) => {
+      const source = current.accountId === currentAccount.id ? current : readOperatingSnapshot(currentAccount.id);
+      const next = update(source);
+      saveOperatingSnapshot(next);
+      return next;
+    });
+  };
+
+  const handleOperatingPeriodChange = (period: OperatingPeriod) => {
+    if (period === operatingPeriod) return;
+    setOperatingPeriod(period);
+    saveOperatingPeriod(currentAccount.id, period);
+    recordAnalytics(currentAccount, {
+      module: 'workbench', action: 'operating_period_changed', status: 'succeeded', trustLevel: 'verified_behavior',
+      properties: { period },
+    });
+  };
+
+  const openBusinessIntent = (intent: BusinessNavigationIntent) => {
+    setBusinessNavigationIntent(intent);
+    setIsOperatingOverviewOpen(false);
+    setActiveTab(intent.tab);
+  };
+
+  const handleOperatingMetricOpen = (metric: WorkbenchOperatingMetric, period: OperatingPeriod) => {
+    recordAnalytics(currentAccount, {
+      module: 'workbench', action: 'operating_metric_opened', status: 'viewed', trustLevel: 'verified_behavior',
+      properties: { target: analyticsTargetByTab[metric.targetTab], period },
+    });
+    openBusinessIntent({ tab: metric.targetTab, source: 'metric', filter: metric.filter, recordIds: metric.sampleRecordIds });
+  };
+
+  const handleOperatingOverviewOpen = (period: OperatingPeriod) => {
+    recordAnalytics(currentAccount, {
+      module: 'workbench', action: 'operating_overview_opened', status: 'viewed', trustLevel: 'verified_behavior',
+      properties: { period },
+    });
+    setIsOperatingOverviewOpen(true);
+  };
+
+  const handleOperatingInsightOpen = (
+    insight: WorkbenchInsightPeriod & { resolved: boolean },
+    period: OperatingPeriod,
+  ) => {
+    recordAnalytics(currentAccount, {
+      module: 'workbench', action: 'operating_signal_opened', status: 'viewed', trustLevel: 'verified_behavior',
+      properties: { target: analyticsTargetByTab[insight.targetTab], period },
+    });
+    if (insight.resolved) {
+      setIsOperatingOverviewOpen(true);
+      return;
+    }
+    openBusinessIntent({ tab: insight.targetTab, source: 'insight', filter: insight.filter, recordIds: insight.recordIds });
+  };
+
+  const handleBusinessStatusChange = (record: BusinessDemoRecord, status: BusinessRecordStatus) => {
+    const previous = getOperatingRecordStatus(activeOperatingSnapshot, record);
+    if (previous === status) return;
+    updateOperatingSnapshotState((snapshot) => updateOperatingRecord(snapshot, record.id, status));
+
+    const reopened = isOperatingRecordResolved(previous) && status === 'in_progress';
+    const action = reopened
+      ? 'business_action_reopened'
+      : status === 'in_progress'
+        ? 'business_action_started'
+        : 'business_action_confirmed';
+    recordAnalytics(currentAccount, {
+      module: 'business_operations',
+      action,
+      status: status === 'in_progress' ? 'started' : 'succeeded',
+      trustLevel: status === 'in_progress' ? 'process_proxy' : 'verified_behavior',
+      properties: { target: analyticsTargetByTab[record.module], businessAction: record.actionType },
+    });
+
+    const message = status === 'in_progress'
+      ? `已开始：${record.title}`
+      : status === 'rejected'
+        ? '已退回补充，审批结果已记录'
+        : '已确认处理，经营概览已同步更新';
+    showToast(message);
+  };
+
   const openAppCenter = (toolId: string | null = null) => {
     recordAnalytics(currentAccount, { module: 'app_center', action: 'app_center_opened', status: 'viewed', trustLevel: 'verified_behavior' });
     if (activeTab !== 'app_center') setAppCenterReturnTab(activeTab);
@@ -438,6 +556,7 @@ export default function App() {
       return;
     }
     if (tool.targetTab) {
+      setBusinessNavigationIntent(null);
       setActiveTab(tool.targetTab);
       return;
     }
@@ -467,7 +586,24 @@ export default function App() {
 
   const openQuoteBuilder = (client: ClientRecord, source: NonNullable<ProductAnalyticsEvent['properties']>['source']) => {
     recordAnalytics(currentAccount, { module: 'quote', action: 'quote_opened', status: 'started', trustLevel: 'process_proxy', properties: { source } });
+    const linkedRecord = businessDemoRecords.find((record) => (
+      record.roleId === currentAccount.id && record.actionType === 'quote' && record.clientId === client.id
+    ));
+    if (linkedRecord && getOperatingRecordStatus(activeOperatingSnapshot, linkedRecord) === 'pending') {
+      handleBusinessStatusChange(linkedRecord, 'in_progress');
+    }
     setQuoteBuilderClient(client);
+  };
+
+  const handleQuoteGenerated = () => {
+    recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', status: 'succeeded', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } });
+    if (!quoteBuilderClient) return;
+    const linkedRecord = businessDemoRecords.find((record) => (
+      record.roleId === currentAccount.id && record.actionType === 'quote' && record.clientId === quoteBuilderClient.id
+    ));
+    if (linkedRecord && !isOperatingRecordResolved(getOperatingRecordStatus(activeOperatingSnapshot, linkedRecord))) {
+      handleBusinessStatusChange(linkedRecord, 'completed');
+    }
   };
 
   // Switch Role Account
@@ -483,6 +619,10 @@ export default function App() {
     setActiveAccountId(accId);
     setIsAccountDrawerOpen(false);
     const newAcc = nextAccount;
+    setOperatingSnapshot(readOperatingSnapshot(newAcc.id));
+    setOperatingPeriod(readOperatingPeriod(newAcc.id));
+    setBusinessNavigationIntent(null);
+    setIsOperatingOverviewOpen(false);
 
     setWorkbenchPreferences(
       readWorkbenchPreferences(
@@ -538,6 +678,15 @@ export default function App() {
     showToast('工作台演示已重置，布局与工作必备保持不变');
   };
 
+  const resetOperatingDemo = () => {
+    resetOperatingSnapshots();
+    const resetSnapshot = createInitialOperatingSnapshot(currentAccount.id);
+    saveOperatingSnapshot(resetSnapshot);
+    setOperatingSnapshot(resetSnapshot);
+    setBusinessNavigationIntent(null);
+    showToast('经营演示数据已重置，事项与工作台偏好保持不变');
+  };
+
   // Logout
   const handleLogout = () => {
     if (confirm('确定要安全退出当前账号吗？')) {
@@ -547,7 +696,10 @@ export default function App() {
 
   const renderWorkbench = () => (
     <WorkbenchView
-      onNavigateToTab={(tab) => setActiveTab(tab)}
+      onNavigateToTab={(tab) => {
+        setBusinessNavigationIntent(null);
+        setActiveTab(tab);
+      }}
       onOpenAppCenter={() => openAppCenter()}
       onSelectClient={(client) => openClient360(client, 'workbench')}
       onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
@@ -566,6 +718,12 @@ export default function App() {
       autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
       autoPromotionPaused={Boolean(taskUndo)}
       taskSnapshot={activeTaskSnapshot}
+      operatingPeriod={operatingPeriod}
+      operatingSnapshot={activeOperatingSnapshot}
+      onOperatingPeriodChange={handleOperatingPeriodChange}
+      onOperatingMetricOpen={handleOperatingMetricOpen}
+      onOperatingOverviewOpen={handleOperatingOverviewOpen}
+      onOperatingInsightOpen={handleOperatingInsightOpen}
       onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
       onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
       onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
@@ -670,6 +828,14 @@ export default function App() {
               <ClientsView
                 onSelectClient={(client) => openClient360(client, 'clients')}
                 onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'clients')}
+                initialFilter={businessNavigationIntent?.tab === 'clients' ? businessNavigationIntent.filter : undefined}
+                highlightClientIds={businessNavigationIntent?.tab === 'clients' ? businessNavigationIntent.recordIds : undefined}
+                resolvedQuoteClientIds={businessDemoRecords.filter((record) => (
+                  record.roleId === currentAccount.id
+                  && record.actionType === 'quote'
+                  && record.clientId
+                  && isOperatingRecordResolved(getOperatingRecordStatus(activeOperatingSnapshot, record))
+                )).map((record) => record.clientId as string)}
                 onClientCreated={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_created', status: 'started', trustLevel: 'process_proxy' })}
                 onSearchStarted={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_search_started', status: 'started', trustLevel: 'process_proxy' })}
                 onFilterChanged={() => recordAnalytics(currentAccount, { module: 'client_360', action: 'client_filter_changed', status: 'succeeded', trustLevel: 'verified_behavior' })}
@@ -688,7 +854,7 @@ export default function App() {
                 onReleaseTestDrive={() => recordAnalytics(currentAccount, { module: 'test_drive', action: 'test_drive_released', status: 'started', trustLevel: 'process_proxy' })}
               />
             </motion.div>
-          ) : activeTab === 'orders' || activeTab === 'approvals' || activeTab === 'inventory' || activeTab === 'service' || activeTab === 'region' ? (
+          ) : activeTab === 'orders' ? (
             <motion.div
               key="orders"
               initial={{ opacity: 0, y: 8 }}
@@ -700,6 +866,26 @@ export default function App() {
                 onOrderCreated={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'order_created', status: 'started', trustLevel: 'process_proxy' })}
                 onContractOpened={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'contract_opened', status: 'viewed', trustLevel: 'process_proxy' })}
                 onDeliveryStarted={() => recordAnalytics(currentAccount, { module: 'order_delivery', action: 'delivery_started', status: 'started', trustLevel: 'process_proxy' })}
+                accountId={currentAccount.id}
+                operatingSnapshot={activeOperatingSnapshot}
+                navigationIntent={businessNavigationIntent}
+                onBusinessStatusChange={handleBusinessStatusChange}
+              />
+            </motion.div>
+          ) : activeTab === 'approvals' || activeTab === 'inventory' || activeTab === 'service' || activeTab === 'region' ? (
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+            >
+              <BusinessModuleView
+                account={currentAccount}
+                tab={activeTab}
+                snapshot={activeOperatingSnapshot}
+                intent={businessNavigationIntent}
+                onStatusChange={handleBusinessStatusChange}
               />
             </motion.div>
           ) : activeTab === 'xiaowan' && currentAccount.hasXiaowan ? (
@@ -747,7 +933,10 @@ export default function App() {
         {/* Bottom Navigation Bar */}
         {activeTab !== 'app_center' && <TabBar
           activeTab={activeTab}
-          onSelectTab={(tab) => setActiveTab(tab)}
+          onSelectTab={(tab) => {
+            setBusinessNavigationIntent(null);
+            setActiveTab(tab);
+          }}
           currentAccount={currentAccount}
         />}
       </div>
@@ -764,10 +953,22 @@ export default function App() {
           setIsAccountDrawerOpen(false);
           openAppCenter();
         }}
-        onOpenCustomerService={() => setIsCustomerServiceOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onOpenAccountSecurity={() => setIsAccountSecurityOpen(true)}
+        onOpenCustomerService={() => {
+          setIsAccountDrawerOpen(false);
+          setIsCustomerServiceOpen(true);
+        }}
+        onOpenSettings={() => {
+          setIsAccountDrawerOpen(false);
+          setIsSettingsOpen(true);
+        }}
+        onOpenNotifications={() => {
+          setIsAccountDrawerOpen(false);
+          setIsNotificationsOpen(true);
+        }}
+        onOpenAccountSecurity={() => {
+          setIsAccountDrawerOpen(false);
+          setIsAccountSecurityOpen(true);
+        }}
         onLogout={handleLogout}
       />
 
@@ -788,7 +989,7 @@ export default function App() {
         client={quoteBuilderClient}
         advisorName={profile.name}
         storeName={profile.store}
-        onGenerateQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_generated', status: 'succeeded', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
+        onGenerateQuote={handleQuoteGenerated}
         onShareQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_shared', status: 'external_handoff', trustLevel: 'process_proxy', properties: { toolType: 'quote_card' } })}
         onCancelQuote={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_cancelled', status: 'cancelled', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
         onQuoteFailed={() => recordAnalytics(currentAccount, { module: 'quote', action: 'quote_failed', status: 'failed', trustLevel: 'verified_behavior', properties: { toolType: 'quote_card' } })}
@@ -824,6 +1025,17 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onResetWorkbenchDemo={resetWorkbenchDemo}
+        onResetOperatingDemo={resetOperatingDemo}
+      />
+
+      <OperatingOverviewModal
+        isOpen={isOperatingOverviewOpen}
+        account={currentAccount}
+        period={operatingPeriod}
+        snapshot={activeOperatingSnapshot}
+        onClose={() => setIsOperatingOverviewOpen(false)}
+        onPeriodChange={handleOperatingPeriodChange}
+        onMetricOpen={(metric) => handleOperatingMetricOpen(metric, operatingPeriod)}
       />
 
       <DetailListModal

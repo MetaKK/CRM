@@ -1,7 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Search, Plus, FileText, Send, AlertTriangle } from 'lucide-react';
 import { mockClients } from '../../data/mockData';
-import { ClientRecord } from '../../types';
+import { ClientRecord, OperatingMetricFilter } from '../../types';
 
 interface ClientsViewProps {
   onSelectClient: (client: ClientRecord) => void;
@@ -9,6 +9,9 @@ interface ClientsViewProps {
   onClientCreated?: () => void;
   onSearchStarted?: () => void;
   onFilterChanged?: () => void;
+  initialFilter?: OperatingMetricFilter;
+  highlightClientIds?: string[];
+  resolvedQuoteClientIds?: string[];
 }
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
@@ -17,12 +20,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   onClientCreated,
   onSearchStarted,
   onFilterChanged,
+  initialFilter,
+  highlightClientIds = [],
+  resolvedQuoteClientIds = [],
 }) => {
   const [activeTab, setActiveTab] = useState('全部');
   const [searchTerm, setSearchTerm] = useState('');
   const hasTrackedSearch = useRef(false);
 
   const tabs = ['全部', '需求确认', '待试驾', '方案报价', '已订车'];
+
+  useEffect(() => {
+    if (initialFilter === 'pending_quote') setActiveTab('方案报价');
+    else if (initialFilter === 'follow_up') setActiveTab('全部');
+    else setActiveTab('全部');
+  }, [initialFilter]);
 
   const filtered = mockClients.filter((c) => {
     const matchesTab = activeTab === '全部' || c.status === activeTab;
@@ -97,7 +109,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <div
             key={client.id}
             onClick={() => onSelectClient(client)}
-            className="crm-card p-3.5 space-y-2.5 cursor-pointer active:bg-slate-50 transition-all"
+            className={`crm-card p-3.5 space-y-2.5 cursor-pointer active:bg-slate-50 transition-all ${highlightClientIds.includes(client.id) ? 'ring-1 ring-[#b9d7f3]' : ''}`}
           >
             <div className="flex items-start justify-between min-w-0">
               <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
@@ -119,6 +131,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <AlertTriangle className="w-2.5 h-2.5 text-[#ff3b30] stroke-[2]" />
                         SLA 预警
                       </span>
+                    )}
+                    {resolvedQuoteClientIds.includes(client.id) && (
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">报价已生成</span>
                     )}
                   </div>
                   <p className="text-xs text-slate-600 font-medium mt-0.5 truncate">{client.intentCar}</p>

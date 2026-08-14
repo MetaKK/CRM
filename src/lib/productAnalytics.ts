@@ -20,7 +20,7 @@ const SESSION_IDLE_MS = 30 * 60 * 1000;
 const actorTypes: AnalyticsActorType[] = ['business', 'operations'];
 const roleTypes: AnalyticsRoleType[] = ['product_expert', 'store_manager', 'service_manager', 'regional_director', 'delivery_specialist', 'product_operations'];
 const journeys: AnalyticsJourney[] = ['sales', 'service', 'delivery', 'management', 'product_operations'];
-const modules: AnalyticsModule[] = ['app', 'workbench', 'work_essential', 'app_center', 'client_360', 'quote', 'test_drive', 'order_delivery', 'xiaowan', 'analytics'];
+const modules: AnalyticsModule[] = ['app', 'workbench', 'work_essential', 'app_center', 'client_360', 'quote', 'test_drive', 'order_delivery', 'business_operations', 'xiaowan', 'analytics'];
 const actions: AnalyticsAction[] = [
   'app_opened', 'page_viewed', 'role_switched', 'quick_action_started', 'priority_opened', 'schedule_opened',
   'recommendation_shown', 'recommendation_accepted', 'auto_transfer_toggled', 'priority_transferred',
@@ -30,11 +30,13 @@ const actions: AnalyticsAction[] = [
   'client_opened', 'client_created', 'client_search_started', 'client_filter_changed',
   'quote_opened', 'quote_generated', 'quote_shared', 'test_drive_booked', 'test_drive_released', 'order_created',
   'contract_opened', 'delivery_started', 'quote_cancelled', 'quote_failed', 'quick_prompt_sent', 'message_sent', 'voice_started', 'period_changed', 'source_explained',
+  'operating_period_changed', 'operating_metric_opened', 'operating_overview_opened', 'operating_signal_opened',
+  'business_action_started', 'business_action_confirmed', 'business_action_reopened',
 ];
 const statuses: AnalyticsEventStatus[] = ['viewed', 'started', 'succeeded', 'external_handoff', 'failed', 'cancelled'];
 const trustLevels: AnalyticsTrustLevel[] = ['verified_behavior', 'process_proxy', 'unobservable'];
 const propertyValues: AnalyticsPropertyValue[] = [
-  'workbench', 'clients', 'testdrive', 'orders', 'app_center', 'work_essential', 'quote', 'xiaowan', 'analytics', 'lab',
+  'workbench', 'clients', 'testdrive', 'orders', 'approvals', 'inventory', 'service', 'region', 'app_center', 'work_essential', 'quote', 'xiaowan', 'analytics', 'lab',
   'ai', 'manual', 'automatic', 'all', 'stage', 'add', 'remove', 'reorder', 'priority', 'schedule', 'quote_card', 'tool', 'lab_tool',
 ];
 
@@ -68,13 +70,15 @@ const isSafeProperties = (value: unknown): value is ProductAnalyticsEvent['prope
   if (value === undefined) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const props = value as Record<string, unknown>;
-  if (Object.keys(props).some((key) => !['source', 'target', 'method', 'stage', 'configurationAction', 'toolType', 'toggleState'].includes(key))) return false;
+  if (Object.keys(props).some((key) => !['source', 'target', 'method', 'stage', 'configurationAction', 'toolType', 'toggleState', 'period', 'businessAction'].includes(key))) return false;
   if (props.source !== undefined && !includes(propertyValues, props.source)) return false;
   if (props.target !== undefined && !includes(propertyValues, props.target)) return false;
   if (props.method !== undefined && !['ai', 'manual', 'automatic'].includes(String(props.method))) return false;
   if (props.stage !== undefined && !['priority', 'schedule'].includes(String(props.stage))) return false;
   if (props.configurationAction !== undefined && !['add', 'remove', 'reorder'].includes(String(props.configurationAction))) return false;
   if (props.toggleState !== undefined && !['enabled', 'disabled'].includes(String(props.toggleState))) return false;
+  if (props.period !== undefined && !['today', 'seven_days', 'month'].includes(String(props.period))) return false;
+  if (props.businessAction !== undefined && !['quote', 'approve', 'transfer', 'review', 'verify', 'service', 'allocate', 'reserve'].includes(String(props.businessAction))) return false;
   return props.toolType === undefined || ['quote_card', 'tool', 'lab_tool'].includes(String(props.toolType));
 };
 
@@ -168,6 +172,7 @@ export const getDemoAnalyticsEvents = (): ProductAnalyticsEvent[] => {
       const role = demoRoles[(daysAgo + session) % demoRoles.length];
       add(daysAgo, session, 0, 'app', 'app_opened', 'viewed', 'verified_behavior');
       add(daysAgo, session, 5, 'workbench', 'page_viewed', 'viewed', 'verified_behavior', { target: 'workbench' });
+      if (session % 3 !== 2) add(daysAgo, session, 8, 'workbench', 'operating_overview_opened', 'viewed', 'verified_behavior', { period: 'today' });
       if (session % 5 !== 4) {
         const stage = session % 2 ? 'schedule' : 'priority';
         add(daysAgo, session, 12, 'workbench', stage === 'priority' ? 'priority_opened' : 'schedule_opened', 'viewed', 'verified_behavior', { stage });
@@ -186,6 +191,12 @@ export const getDemoAnalyticsEvents = (): ProductAnalyticsEvent[] => {
       } else if ((role === 'store_manager' || role === 'regional_director') && session % 3 !== 2) {
         add(daysAgo, session, 19, 'work_essential', 'page_viewed', 'viewed', 'process_proxy', { target: 'work_essential' });
         if (session % 2 === 0) add(daysAgo, session, 30, 'app', 'quick_action_started', 'started', 'process_proxy');
+      }
+      if (role !== 'product_expert' && session % 3 !== 2) {
+        const target = role === 'store_manager' ? 'approvals' : role === 'service_manager' ? 'inventory' : role === 'regional_director' ? 'region' : 'orders';
+        const businessAction = role === 'store_manager' ? 'approve' : role === 'service_manager' ? 'transfer' : role === 'regional_director' ? 'review' : 'verify';
+        add(daysAgo, session, 33, 'business_operations', 'business_action_started', 'started', 'process_proxy', { target, businessAction });
+        if (session % 2 === 0) add(daysAgo, session, 36, 'business_operations', 'business_action_confirmed', 'succeeded', 'verified_behavior', { target, businessAction });
       }
       if (session % 2 === 0 || session === 1) add(daysAgo, session, 43, 'app_center', 'app_center_opened', 'viewed', 'verified_behavior');
       if (session % 2 === 0) add(daysAgo, session, 46, 'app_center', 'tool_detail_viewed', 'viewed', 'verified_behavior', { toolType: 'tool' });
