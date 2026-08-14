@@ -16,8 +16,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight, GripVertical, Plus, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, GripVertical, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { mockClients } from '../../data/mockData';
+import { getWorkbenchTaskState } from '../../lib/workbenchTasks';
 import {
   AppTool,
   ClientRecord,
@@ -26,6 +27,8 @@ import {
   WorkbenchPriority,
   WorkbenchScheduleItem,
   WorkbenchSectionId,
+  WorkbenchTaskReference,
+  WorkbenchTaskSnapshot,
 } from '../../types';
 import { getAppToolIcon } from '../appTools';
 
@@ -37,10 +40,14 @@ interface WorkbenchViewProps {
   onLaunchTool: (tool: AppTool) => void;
   onSectionOrderChange: (sectionOrder: WorkbenchSectionId[]) => void;
   onPromoteSchedule: (item: WorkbenchScheduleItem, source: 'ai' | 'manual', mode?: 'manual' | 'automatic') => void;
+  onUnpinSchedule: (item: WorkbenchScheduleItem) => void;
+  onTaskStarted: (reference: WorkbenchTaskReference, stage: 'priority' | 'schedule') => void;
+  onTaskCompleted: (reference: WorkbenchTaskReference, stage: 'priority' | 'schedule') => void;
+  onTaskReopened: (reference: WorkbenchTaskReference) => void;
   onAutoPromoteEnabledChange: (enabled: boolean) => void;
   onPriorityOpened?: (isTransferred: boolean) => void;
   onScheduleOpened?: () => void;
-  onRecommendationShown?: () => void;
+  onRecommendationShown?: (mode: 'manual' | 'automatic') => void;
   onRecommendationAccepted?: () => void;
   currentAccount: RoleAccount;
   priorities: WorkbenchPriority[];
@@ -48,6 +55,8 @@ interface WorkbenchViewProps {
   quickToolIds: string[];
   sectionOrder: WorkbenchSectionId[];
   autoPromoteEnabled: boolean;
+  autoPromotionPaused: boolean;
+  taskSnapshot: WorkbenchTaskSnapshot;
 }
 
 type FocusTab = 'priority' | 'schedule';
@@ -130,6 +139,10 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   onLaunchTool,
   onSectionOrderChange,
   onPromoteSchedule,
+  onUnpinSchedule,
+  onTaskStarted,
+  onTaskCompleted,
+  onTaskReopened,
   onAutoPromoteEnabledChange,
   onPriorityOpened,
   onScheduleOpened,
@@ -141,9 +154,13 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   quickToolIds,
   sectionOrder,
   autoPromoteEnabled,
+  autoPromotionPaused,
+  taskSnapshot,
 }) => {
   const [focusTab, setFocusTab] = useState<FocusTab>('priority');
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [isPriorityExpanded, setIsPriorityExpanded] = useState(false);
+  const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
   const aiTimerRef = useRef<number | null>(null);
   const shownRecommendationRef = useRef<string | null>(null);
   const sensors = useSensors(
@@ -157,6 +174,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     shownRecommendationRef.current = null;
     setFocusTab('priority');
     setIsAiAnalyzing(false);
+    setIsPriorityExpanded(false);
+    setIsCompletedExpanded(false);
   }, [currentAccount.id]);
 
   useEffect(() => () => {
@@ -165,7 +184,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
 
   const getClient = (clientId?: string) => mockClients.find((client) => client.id === clientId);
 
+  const getPriorityReference = (priority: WorkbenchPriority): WorkbenchTaskReference => priority.sourceScheduleId
+    ? { kind: 'schedule', id: priority.sourceScheduleId }
+    : { kind: 'priority', id: priority.id };
+
   const handlePriorityAction = (priority: WorkbenchPriority) => {
+    onTaskStarted(getPriorityReference(priority), 'priority');
     onPriorityOpened?.(Boolean(priority.source));
     const client = getClient(priority.clientId);
     if (priority.interaction === 'quote' && client) {
@@ -180,6 +204,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   };
 
   const handleScheduleAction = (item: WorkbenchScheduleItem) => {
+    onTaskStarted({ kind: 'schedule', id: item.id }, 'schedule');
     onScheduleOpened?.();
     const client = getClient(item.clientId);
     if (client && item.targetTab === 'clients') {
@@ -189,15 +214,20 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     if (item.targetTab) onNavigateToTab(item.targetTab);
   };
 
-  const activeSchedule = currentAccount.workbenchSchedule.filter((item) => item.status !== '已完成');
-  const displayedPriorities = priorities.slice(0, 3);
+  const scheduleWithState = currentAccount.workbenchSchedule.map((item) => ({
+    item,
+    state: getWorkbenchTaskState(taskSnapshot, { kind: 'schedule', id: item.id }),
+  }));
+  const activeSchedule = scheduleWithState.filter(({ state }) => state.status !== 'completed').map(({ item }) => item);
+  const completedSchedule = scheduleWithState.filter(({ state }) => state.status === 'completed').map(({ item }) => item);
+  const displayedPriorities = isPriorityExpanded ? priorities : priorities.slice(0, 3);
   const primaryPriority = displayedPriorities[0];
   const followingPriorities = displayedPriorities.slice(1);
   const promotedScheduleIds = new Set(
     priorities.flatMap((priority) => priority.sourceScheduleId ? [priority.sourceScheduleId] : []),
   );
   const aiCandidate = [...activeSchedule]
-    .filter((item) => !promotedScheduleIds.has(item.id))
+    .filter((item) => !promotedScheduleIds.has(item.id) && !taskSnapshot.suppressedScheduleIds.includes(item.id))
     .sort((first, second) => (
       urgencyWeight[second.urgency] - urgencyWeight[first.urgency]
       || Number(Boolean(second.clientId)) - Number(Boolean(first.clientId))
@@ -229,7 +259,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   };
 
   useEffect(() => {
-    if (!autoPromoteEnabled || primaryPriority || !aiCandidate) {
+    if (!autoPromoteEnabled || autoPromotionPaused || primaryPriority || !aiCandidate) {
       if (aiTimerRef.current !== null) {
         window.clearTimeout(aiTimerRef.current);
         aiTimerRef.current = null;
@@ -247,17 +277,22 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
       setFocusTab('priority');
       setIsAiAnalyzing(false);
       aiTimerRef.current = null;
-    }, 1100);
-  }, [aiCandidate, autoPromoteEnabled, isAiAnalyzing, onPromoteSchedule, primaryPriority]);
+    }, 900);
+  }, [aiCandidate, autoPromoteEnabled, autoPromotionPaused, isAiAnalyzing, onPromoteSchedule, primaryPriority]);
 
   useEffect(() => {
-    if (primaryPriority || !aiCandidate || shownRecommendationRef.current === aiCandidate.id) return;
-    shownRecommendationRef.current = aiCandidate.id;
-    onRecommendationShown?.();
-  }, [aiCandidate, onRecommendationShown, primaryPriority]);
+    if (autoPromotionPaused || primaryPriority || !aiCandidate) return;
+    const recommendationKey = `${aiCandidate.id}:${autoPromoteEnabled ? 'automatic' : 'manual'}`;
+    if (shownRecommendationRef.current === recommendationKey) return;
+    shownRecommendationRef.current = recommendationKey;
+    onRecommendationShown?.(autoPromoteEnabled ? 'automatic' : 'manual');
+  }, [aiCandidate, autoPromoteEnabled, autoPromotionPaused, onRecommendationShown, primaryPriority]);
 
   const handleManualPromotion = (item: WorkbenchScheduleItem) => {
-    if (promotedScheduleIds.has(item.id)) return;
+    if (promotedScheduleIds.has(item.id)) {
+      onUnpinSchedule(item);
+      return;
+    }
     onPromoteSchedule(item, 'manual');
     setFocusTab('priority');
   };
@@ -278,6 +313,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
 
   const renderPriorityContent = () => {
     if (!primaryPriority) {
+      const allScheduleComplete = activeSchedule.length === 0;
       return (
         <div className="border-t border-[#f0f3f9] px-4 py-4">
           <div className="rounded-xl border border-[#dce9f7] bg-[#f8fbff] p-3.5">
@@ -286,21 +322,23 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                 <Sparkles className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <strong className="block text-[13px] text-slate-800">{currentAccount.workbenchEmptyStateTitle || '最紧急事项已清空'}</strong>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#5a6a88]">{currentAccount.workbenchEmptyStateDescription || '可从今日行程补充下一件最值得优先推进的事情。'}</p>
+                <strong className="block text-[13px] text-slate-800">紧急事项已处理完</strong>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#5a6a88]">
+                  可以从今日行程选择下一件，开启自动置顶后系统会自动推荐。
+                </p>
               </div>
             </div>
 
             {currentAccount.workbenchAutoPromoteUseCase && (
               <p className="mt-3 border-l-2 border-[#b9d7f3] pl-2.5 text-[10px] leading-relaxed text-[#5a6a88]">
-                当前场景：{currentAccount.workbenchAutoPromoteUseCase}
+                演示场景：{currentAccount.workbenchAutoPromoteUseCase.replace('自动推荐', '自动置顶')}
               </p>
             )}
 
             {isAiAnalyzing ? (
               <div role="status" className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#1a6fd4]">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1a6fd4] animate-pulse" />
-                正在评估下一件：优先级 → 时效 → 客户影响
+                正在选择下一件：优先级 → 时效 → 客户影响
               </div>
             ) : aiCandidate && !autoPromoteEnabled ? (
               <button
@@ -308,12 +346,16 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                 className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[#1a6fd4] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-[#155caf] cursor-pointer"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                推荐下一件
+                帮我选下一件
               </button>
+            ) : aiCandidate && autoPromotionPaused ? (
+              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">完成操作可撤销，确认后将自动置顶下一件</p>
             ) : aiCandidate ? (
-              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">已开启自动转入，将从今日行程推荐下一件</p>
+              <p className="mt-3 text-center text-[11px] text-[#5a6a88]">已开启自动置顶，即将选择下一件</p>
             ) : (
-              <p className="mt-3 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#8a9ab8]">今日行程暂无可转入的待办事项</p>
+              <p className="mt-3 rounded-lg bg-white px-3 py-2.5 text-[11px] text-[#8a9ab8]">
+                {allScheduleComplete ? '今日行程已全部完成' : '暂无可自动置顶事项，可在今日行程中手工选择'}
+              </p>
             )}
           </div>
         </div>
@@ -321,18 +363,23 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
     }
 
     const primaryTone = urgencyTone[primaryPriority.urgency];
+    const primaryReference = getPriorityReference(primaryPriority);
+    const primaryState = getWorkbenchTaskState(taskSnapshot, primaryReference);
     return (
       <div className="divide-y divide-[#f0f3f9] border-t border-[#f0f3f9]">
         <div className="flex gap-3 px-4 py-3.5">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1a6fd4] text-[11px] font-bold text-white">1</span>
           <button onClick={() => handlePriorityAction(primaryPriority)} className="min-w-0 flex-1 text-left cursor-pointer">
-            <span className={`flex items-center gap-1.5 text-[11px] font-medium ${primaryTone.text}`}>
+            <span className={`flex flex-wrap items-center gap-1.5 text-[11px] font-medium ${primaryTone.text}`}>
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${primaryTone.dot}`} />
               {primaryTone.label}
               {primaryPriority.source && (
                 <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-[#1a6fd4]">
-                  {primaryPriority.source === 'ai' ? 'AI 转入' : '手工置顶'}
+                  {primaryPriority.source === 'ai' ? '智能置顶' : '手工置顶'}
                 </span>
+              )}
+              {primaryState.status === 'in_progress' && (
+                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">处理中</span>
               )}
             </span>
             <strong className="mt-1 block truncate text-[14px] text-slate-900">{primaryPriority.subject}</strong>
@@ -341,67 +388,152 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
           <div className="flex shrink-0 flex-col items-end justify-between gap-2">
             <span className="text-[10px] text-slate-400">{primaryPriority.dueLabel}</span>
             <button onClick={() => handlePriorityAction(primaryPriority)} className="rounded-lg bg-[#1a6fd4] px-2.5 py-1.5 text-[11px] font-semibold text-white cursor-pointer transition-colors hover:bg-[#155caf]">
-              {primaryPriority.actionLabel}
+              {primaryState.status === 'in_progress' ? '继续处理' : primaryPriority.actionLabel}
             </button>
+            {primaryState.status === 'in_progress' && (
+              <button
+                type="button"
+                onClick={() => onTaskCompleted(primaryReference, 'priority')}
+                className="flex min-h-7 items-center gap-1 text-[10px] font-semibold text-[#1a6fd4] cursor-pointer"
+              >
+                <Check className="h-3 w-3" />标记已处理
+              </button>
+            )}
           </div>
         </div>
 
         {followingPriorities.map((priority, index) => {
           const tone = urgencyTone[priority.urgency];
+          const reference = getPriorityReference(priority);
+          const state = getWorkbenchTaskState(taskSnapshot, reference);
           return (
-            <button key={priority.id} onClick={() => handlePriorityAction(priority)} className="flex w-full items-center gap-3 px-4 py-3 text-left cursor-pointer hover:bg-blue-50/40">
+            <div key={priority.id} className="flex w-full items-center gap-3 px-4 py-3 hover:bg-blue-50/40">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-[#1a6fd4]">{index + 2}</span>
-              <span className="min-w-0 flex-1">
-                <span className={`flex items-center gap-1.5 text-[10px] font-medium ${tone.text}`}>
+              <button onClick={() => handlePriorityAction(priority)} className="min-w-0 flex-1 text-left cursor-pointer">
+                <span className={`flex flex-wrap items-center gap-1.5 text-[10px] font-medium ${tone.text}`}>
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
                   {tone.label}
-                  {priority.source && <span className="text-[#1a6fd4]">{priority.source === 'ai' ? 'AI 转入' : '手工置顶'}</span>}
+                  {priority.source && <span className="text-[#1a6fd4]">{priority.source === 'ai' ? '智能置顶' : '手工置顶'}</span>}
+                  {state.status === 'in_progress' && <span className="text-emerald-700">处理中</span>}
                 </span>
                 <strong className="mt-0.5 block truncate text-[13px] text-slate-800">{priority.subject}</strong>
-              </span>
-              <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">{priority.dueLabel}<ChevronRight className="h-3.5 w-3.5 text-[#1a6fd4]" /></span>
-            </button>
+              </button>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <button onClick={() => handlePriorityAction(priority)} className="flex min-h-7 items-center gap-1 text-[10px] text-slate-400 cursor-pointer">
+                  {state.status === 'in_progress' ? '继续处理' : priority.dueLabel}<ChevronRight className="h-3.5 w-3.5 text-[#1a6fd4]" />
+                </button>
+                {state.status === 'in_progress' && (
+                  <button onClick={() => onTaskCompleted(reference, 'priority')} className="min-h-7 text-[10px] font-semibold text-[#1a6fd4] cursor-pointer">标记已处理</button>
+                )}
+              </div>
+            </div>
           );
         })}
+
+        {priorities.length > 3 && (
+          <button
+            type="button"
+            aria-expanded={isPriorityExpanded}
+            onClick={() => setIsPriorityExpanded((expanded) => !expanded)}
+            className="flex min-h-10 w-full items-center justify-center gap-1 text-[11px] font-medium text-[#1a6fd4] cursor-pointer"
+          >
+            {isPriorityExpanded ? '收起' : `展开其余 ${priorities.length - 3} 件`}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isPriorityExpanded ? 'rotate-180' : ''}`} />
+          </button>
+        )}
       </div>
     );
   };
 
-  const renderScheduleContent = () => (
-    <div className="border-t border-[#f0f3f9] px-5">
-      {activeSchedule.length === 0 ? (
-        <p className="py-5 text-center text-[12px] text-[#8a9ab8]">今日行程已全部完成</p>
-      ) : activeSchedule.map((item) => {
-        const tone = urgencyTone[item.urgency];
-        const isPromoted = promotedScheduleIds.has(item.id);
-        return (
-          <div key={item.id} className="flex gap-3 border-b border-[#f0f3f9] py-3 last:border-0">
-            <button onClick={() => handleScheduleAction(item)} className="flex min-w-0 flex-1 items-start gap-3 text-left cursor-pointer">
-              <span className="w-9 shrink-0 pt-0.5 text-[13px] font-bold text-slate-800">{item.time}</span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
-                  <strong className="truncate text-[13px] text-slate-800">{item.title}</strong>
-                </span>
-                <span className="mt-1 block truncate text-[12px] text-slate-600">{item.subject}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-slate-400">{item.description}</span>
-              </span>
-            </button>
-            <div className="flex shrink-0 flex-col items-end justify-between gap-2 py-0.5">
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-[#1a6fd4]">{item.status}</span>
-              <button
-                onClick={() => handleManualPromotion(item)}
-                disabled={isPromoted}
-                className="text-[10px] font-medium text-[#1a6fd4] cursor-pointer disabled:cursor-default disabled:text-[#aab8cd]"
-              >
-                {isPromoted ? '已转入' : '设为最紧急'}
-              </button>
+  const renderScheduleContent = () => {
+    const total = currentAccount.workbenchSchedule.length;
+    const completed = completedSchedule.length;
+    const progress = total ? Math.round((completed / total) * 100) : 0;
+
+    return (
+      <div className="border-t border-[#f0f3f9] px-5">
+        {total > 0 && (
+          <div className="py-3">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="font-medium text-[#5a6a88]">今日已完成 {completed} / 共 {total}</span>
+              <span className="text-[#8a9ab8]">{progress}%</span>
+            </div>
+            <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-[#eaf0f7]" aria-label={`今日行程完成 ${progress}%`}>
+              <div className="h-full rounded-full bg-[#1a6fd4] transition-[width] duration-300" style={{ width: `${progress}%` }} />
             </div>
           </div>
-        );
-      })}
-    </div>
-  );
+        )}
+
+        {activeSchedule.length === 0 ? (
+          <p className="border-t border-[#f0f3f9] py-5 text-center text-[12px] text-[#8a9ab8]">今日行程已全部完成</p>
+        ) : activeSchedule.map((item) => {
+          const tone = urgencyTone[item.urgency];
+          const reference: WorkbenchTaskReference = { kind: 'schedule', id: item.id };
+          const state = getWorkbenchTaskState(taskSnapshot, reference);
+          const isPromoted = promotedScheduleIds.has(item.id);
+          return (
+            <div key={item.id} className="flex gap-3 border-t border-[#f0f3f9] py-3">
+              <button onClick={() => handleScheduleAction(item)} className="flex min-w-0 flex-1 items-start gap-3 text-left cursor-pointer">
+                <span className="w-9 shrink-0 pt-0.5 text-[13px] font-bold text-slate-800">{item.time}</span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+                    <strong className="truncate text-[13px] text-slate-800">{item.title}</strong>
+                  </span>
+                  <span className="mt-1 block truncate text-[12px] text-slate-600">{item.subject}</span>
+                  <span className="mt-0.5 block truncate text-[10px] text-slate-400">{item.description}</span>
+                </span>
+              </button>
+              <div className="flex shrink-0 flex-col items-end gap-1 py-0.5">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${state.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-[#1a6fd4]'}`}>
+                  {state.status === 'in_progress' ? '处理中' : item.status}
+                </span>
+                <button
+                  onClick={() => handleManualPromotion(item)}
+                  className="min-h-7 text-[10px] font-medium text-[#1a6fd4] cursor-pointer"
+                >
+                  {isPromoted ? '取消置顶' : '置顶处理'}
+                </button>
+                {state.status === 'in_progress' && (
+                  <button onClick={() => onTaskCompleted(reference, 'schedule')} className="min-h-7 text-[10px] font-semibold text-[#1a6fd4] cursor-pointer">标记已处理</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {completedSchedule.length > 0 && (
+          <div className="border-t border-[#f0f3f9]">
+            <button
+              type="button"
+              aria-expanded={isCompletedExpanded}
+              onClick={() => setIsCompletedExpanded((expanded) => !expanded)}
+              className="flex min-h-11 w-full items-center justify-between text-[11px] font-medium text-[#5a6a88] cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-600" />已完成 {completedSchedule.length} 件</span>
+              <ChevronDown className={`h-4 w-4 text-[#8a9ab8] transition-transform ${isCompletedExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {isCompletedExpanded && completedSchedule.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 border-t border-[#f0f3f9] py-2.5">
+                <span className="w-9 shrink-0 text-[12px] font-medium text-[#8a9ab8]">{item.time}</span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-[12px] font-medium text-[#5a6a88] line-through decoration-[#aab8cd]">{item.title}</strong>
+                  <span className="mt-0.5 block truncate text-[10px] text-[#aab8cd]">{item.subject}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onTaskReopened({ kind: 'schedule', id: item.id })}
+                  className="flex min-h-8 items-center gap-1 text-[10px] font-semibold text-[#1a6fd4] cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" />恢复
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderFocus = () => (
     <section className="crm-card overflow-hidden">
@@ -412,11 +544,11 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
             type="button"
             role="switch"
             aria-checked={autoPromoteEnabled}
-            aria-label="自动转入：紧急事项为空时，将今日行程推荐事项转入最紧急的事"
+            aria-label="自动置顶：紧急事项为空时，从今日行程选择下一件并置顶"
             onClick={() => onAutoPromoteEnabledChange(!autoPromoteEnabled)}
             className="flex h-7 shrink-0 items-center gap-1.5 text-[10px] font-medium text-[#5a6a88] cursor-pointer"
           >
-            自动转入
+            自动置顶
             <span className={`relative h-4 w-7 rounded-full transition-colors ${autoPromoteEnabled ? 'bg-[#1a6fd4]' : 'bg-[#c7d2e2]'}`}>
               <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-[left,right] ${autoPromoteEnabled ? 'right-0.5' : 'left-0.5'}`} />
             </span>
@@ -429,7 +561,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
             onClick={() => setFocusTab('priority')}
             className={`relative h-8 border-b-2 text-[14px] font-semibold transition-colors cursor-pointer ${focusTab === 'priority' ? 'border-[#1a6fd4] text-slate-900' : 'border-transparent text-[#8a9ab8] hover:text-[#5a6a88]'}`}
           >
-            最紧急的事
+            最紧急{priorities.length > 0 ? ` · ${priorities.length}` : ''}
           </button>
           <button
             role="tab"
@@ -437,7 +569,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
             onClick={() => setFocusTab('schedule')}
             className={`relative h-8 border-b-2 text-[14px] font-semibold transition-colors cursor-pointer ${focusTab === 'schedule' ? 'border-[#1a6fd4] text-slate-900' : 'border-transparent text-[#8a9ab8] hover:text-[#5a6a88]'}`}
           >
-            今日行程{activeSchedule.length > 0 ? ` · ${activeSchedule.length}` : ''}
+            今日行程{currentAccount.workbenchSchedule.length > 0 ? ` · 待办 ${activeSchedule.length}` : ''}
           </button>
         </div>
       </div>

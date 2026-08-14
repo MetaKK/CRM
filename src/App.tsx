@@ -12,6 +12,9 @@ import {
   WorkbenchPriority,
   WorkbenchScheduleItem,
   WorkbenchSectionId,
+  WorkbenchTaskReference,
+  WorkbenchTaskSnapshot,
+  WorkbenchTaskState,
   ProductAnalyticsEvent,
   RoleAccount,
 } from './types';
@@ -32,6 +35,18 @@ import {
 } from './lib/workbenchPreferences';
 import { readRecentAppToolIds, recordRecentAppToolId } from './lib/appCenterPreferences';
 import { readSupportedLabToolIds, toggleSupportedLabToolId } from './lib/labPreferences';
+import {
+  completeWorkbenchTask,
+  createInitialWorkbenchTaskSnapshot,
+  getWorkbenchTaskState,
+  promoteScheduleTask,
+  readWorkbenchTaskSnapshot,
+  reopenWorkbenchTask,
+  resetWorkbenchTaskSnapshots,
+  saveWorkbenchTaskSnapshot,
+  startWorkbenchTask,
+  unpinScheduleTask,
+} from './lib/workbenchTasks';
 import {
   getAnalyticsActorType,
   getAnalyticsJourney,
@@ -96,6 +111,18 @@ const analyticsTargetByTab: Partial<Record<TabType, NonNullable<ProductAnalytics
 
 type AnalyticsPayload = Pick<ProductAnalyticsEvent, 'module' | 'action' | 'status' | 'trustLevel' | 'properties'>;
 
+interface ToastState {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+interface TaskUndoState {
+  accountId: string;
+  reference: WorkbenchTaskReference;
+  previousState: WorkbenchTaskState;
+}
+
 export default function App() {
   // Main Account & Tab State
   const [activeAccountId, setActiveAccountId] = useState<string>('kian');
@@ -107,11 +134,37 @@ export default function App() {
     mockRoleAccounts.find((a) => a.id === activeAccountId) || mockRoleAccounts[0];
   const availableTools = getAvailableTools(currentAccount.id);
   const defaultQuickToolIds = defaultQuickToolIdsByRole[currentAccount.id] || [];
-  const [promotedPrioritiesByAccount, setPromotedPrioritiesByAccount] = useState<Record<string, WorkbenchPriority[]>>({});
-  const workbenchPriorities = [
-    ...(promotedPrioritiesByAccount[currentAccount.id] || []),
-    ...currentAccount.workbenchPriorities,
-  ];
+  const [workbenchTaskSnapshot, setWorkbenchTaskSnapshot] = useState<WorkbenchTaskSnapshot>(() => (
+    readWorkbenchTaskSnapshot(mockRoleAccounts[0])
+  ));
+  const activeTaskSnapshot = workbenchTaskSnapshot.accountId === currentAccount.id
+    ? workbenchTaskSnapshot
+    : createInitialWorkbenchTaskSnapshot(currentAccount);
+  const promotedPriorities = currentAccount.workbenchSchedule.flatMap((item) => {
+    const state = getWorkbenchTaskState(activeTaskSnapshot, { kind: 'schedule', id: item.id });
+    if (!state.focused || state.status === 'completed') return [];
+    return [{
+      id: `promoted-${item.id}`,
+      rank: 1 as const,
+      urgency: item.urgency,
+      title: item.title,
+      subject: item.subject,
+      description: state.focusSource === 'ai'
+        ? `依据优先级、时效与客户影响置顶 · ${item.description}`
+        : `由你从今日行程置顶 · ${item.description}`,
+      dueLabel: `${item.time} 安排`,
+      actionLabel: '查看安排',
+      interaction: item.clientId && item.targetTab === 'clients' ? 'client' as const : 'tab' as const,
+      targetTab: item.targetTab,
+      clientId: item.clientId,
+      source: state.focusSource,
+      sourceScheduleId: item.id,
+    }];
+  });
+  const activeBasePriorities = currentAccount.workbenchPriorities.filter((priority) => (
+    getWorkbenchTaskState(activeTaskSnapshot, { kind: 'priority', id: priority.id }).status !== 'completed'
+  ));
+  const workbenchPriorities = [...promotedPriorities, ...activeBasePriorities];
 
   const [workbenchPreferences, setWorkbenchPreferences] = useState<WorkbenchPreferences>(() =>
     readWorkbenchPreferences(
@@ -157,7 +210,9 @@ export default function App() {
   const [quoteBuilderClient, setQuoteBuilderClient] = useState<ClientRecord | null>(null);
 
   // Toast alert
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [taskUndo, setTaskUndo] = useState<TaskUndoState | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   const recordAnalytics = useCallback((account: RoleAccount, payload: AnalyticsPayload) => {
     trackAnalyticsEvent({
@@ -169,10 +224,19 @@ export default function App() {
     setAnalyticsRevision((revision) => revision + 1);
   }, []);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+  const showToast = (message: string, action?: Pick<ToastState, 'actionLabel' | 'onAction'>, duration = 2500) => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    setToast({ message, ...action });
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      setTaskUndo(null);
+      toastTimerRef.current = null;
+    }, duration);
   };
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+  }, []);
 
   useEffect(() => {
     setWorkbenchPreferences(
@@ -184,6 +248,8 @@ export default function App() {
       ),
     );
     setRecentAppToolIds(readRecentAppToolIds(currentAccount.id, availableTools.map((tool) => tool.id)));
+    setWorkbenchTaskSnapshot(readWorkbenchTaskSnapshot(currentAccount));
+    setTaskUndo(null);
   }, [currentAccount.id]);
 
   useEffect(() => {
@@ -208,6 +274,19 @@ export default function App() {
   const updateWorkbenchPreferences = (nextPreferences: WorkbenchPreferences) => {
     setWorkbenchPreferences(nextPreferences);
     saveWorkbenchPreferences(currentAccount.id, nextPreferences);
+  };
+
+  const updateWorkbenchTaskSnapshot = (
+    update: (snapshot: WorkbenchTaskSnapshot) => WorkbenchTaskSnapshot,
+  ) => {
+    setWorkbenchTaskSnapshot((current) => {
+      const source = current.accountId === currentAccount.id
+        ? current
+        : readWorkbenchTaskSnapshot(currentAccount);
+      const next = update(source);
+      saveWorkbenchTaskSnapshot(next);
+      return next;
+    });
   };
 
   const handleQuickToolToggle = (toolId: string) => {
@@ -245,43 +324,96 @@ export default function App() {
       action: 'auto_transfer_toggled',
       status: 'succeeded',
       trustLevel: 'verified_behavior',
-      properties: { method: 'automatic' },
+      properties: { method: 'automatic', toggleState: autoPromoteEnabled ? 'enabled' : 'disabled' },
     });
-    showToast(autoPromoteEnabled ? '已开启自动转入' : '已关闭自动转入');
+    showToast(autoPromoteEnabled ? '已开启自动置顶' : '已关闭自动置顶');
   };
 
   const handlePromoteSchedule = (item: WorkbenchScheduleItem, source: 'ai' | 'manual', mode: 'manual' | 'automatic' = 'manual') => {
-    const priority: WorkbenchPriority = {
-      id: `promoted-${item.id}`,
-      rank: 1,
-      urgency: item.urgency,
-      title: item.title,
-      subject: item.subject,
-      description: source === 'ai'
-        ? `AI 演示已按优先级、时效与客户影响完成排序 · ${item.description}`
-        : `由你从今日行程设为最紧急 · ${item.description}`,
-      dueLabel: `${item.time} 安排`,
-      actionLabel: '查看安排',
-      interaction: item.clientId && item.targetTab === 'clients' ? 'client' : 'tab',
-      targetTab: item.targetTab,
-      clientId: item.clientId,
-      source,
-      sourceScheduleId: item.id,
-    };
-
-    setPromotedPrioritiesByAccount((previous) => {
-      const existing = previous[currentAccount.id] || [];
-      if (existing.some((item) => item.sourceScheduleId === priority.sourceScheduleId)) return previous;
-      return { ...previous, [currentAccount.id]: [priority, ...existing] };
-    });
+    const state = getWorkbenchTaskState(activeTaskSnapshot, { kind: 'schedule', id: item.id });
+    if (state.focused || state.status === 'completed') return;
+    updateWorkbenchTaskSnapshot((snapshot) => promoteScheduleTask(snapshot, item.id, source, mode));
     recordAnalytics(currentAccount, {
       module: 'workbench',
-      action: 'priority_transferred',
+      action: 'priority_promoted',
       status: 'succeeded',
       trustLevel: 'verified_behavior',
       properties: { method: mode, source },
     });
-    showToast(source === 'ai' ? `AI 已将「${item.title}」转为最紧急事项` : `已将「${item.title}」设为最紧急事项`);
+    showToast(source === 'ai' ? `已智能置顶「${item.title}」` : `已置顶「${item.title}」`);
+  };
+
+  const handleUnpinSchedule = (item: WorkbenchScheduleItem) => {
+    const state = getWorkbenchTaskState(activeTaskSnapshot, { kind: 'schedule', id: item.id });
+    if (!state.focused) return;
+    updateWorkbenchTaskSnapshot((snapshot) => unpinScheduleTask(snapshot, item.id));
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'priority_unpinned',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
+      properties: { stage: 'schedule', source: state.focusSource, method: state.focusMethod },
+    });
+    showToast(`已取消置顶「${item.title}」`);
+  };
+
+  const handleTaskStarted = (reference: WorkbenchTaskReference, stage: 'priority' | 'schedule') => {
+    const state = getWorkbenchTaskState(activeTaskSnapshot, reference);
+    if (state.status !== 'pending') return;
+    updateWorkbenchTaskSnapshot((snapshot) => startWorkbenchTask(snapshot, reference));
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'task_started',
+      status: 'started',
+      trustLevel: 'verified_behavior',
+      properties: { stage },
+    });
+  };
+
+  const handleTaskCompleted = (reference: WorkbenchTaskReference, stage: 'priority' | 'schedule') => {
+    const previousState = getWorkbenchTaskState(activeTaskSnapshot, reference);
+    if (previousState.status === 'completed') return;
+    updateWorkbenchTaskSnapshot((snapshot) => completeWorkbenchTask(snapshot, reference));
+    const undoState: TaskUndoState = { accountId: currentAccount.id, reference, previousState };
+    setTaskUndo(undoState);
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'task_completed',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
+      properties: { stage },
+    });
+    showToast('已标记为处理完成', {
+      actionLabel: '撤销',
+      onAction: () => {
+        if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+        updateWorkbenchTaskSnapshot((snapshot) => reopenWorkbenchTask(snapshot, reference, previousState));
+        recordAnalytics(currentAccount, {
+          module: 'workbench',
+          action: 'task_reopened',
+          status: 'succeeded',
+          trustLevel: 'verified_behavior',
+          properties: { stage },
+        });
+        setTaskUndo(null);
+        setToast(null);
+        toastTimerRef.current = null;
+      },
+    }, 5000);
+  };
+
+  const handleTaskReopened = (reference: WorkbenchTaskReference) => {
+    const state = getWorkbenchTaskState(activeTaskSnapshot, reference);
+    if (state.status !== 'completed') return;
+    updateWorkbenchTaskSnapshot((snapshot) => reopenWorkbenchTask(snapshot, reference));
+    recordAnalytics(currentAccount, {
+      module: 'workbench',
+      action: 'task_reopened',
+      status: 'succeeded',
+      trustLevel: 'verified_behavior',
+      properties: { stage: reference.kind },
+    });
+    showToast('已恢复为处理中');
   };
 
   const openAppCenter = (toolId: string | null = null) => {
@@ -397,6 +529,15 @@ export default function App() {
     showToast('已清除本机真实埋点，演示基线保留');
   };
 
+  const resetWorkbenchDemo = () => {
+    resetWorkbenchTaskSnapshots();
+    const resetSnapshot = createInitialWorkbenchTaskSnapshot(currentAccount);
+    saveWorkbenchTaskSnapshot(resetSnapshot);
+    setWorkbenchTaskSnapshot(resetSnapshot);
+    setTaskUndo(null);
+    showToast('工作台演示已重置，布局与工作必备保持不变');
+  };
+
   // Logout
   const handleLogout = () => {
     if (confirm('确定要安全退出当前账号吗？')) {
@@ -404,18 +545,56 @@ export default function App() {
     }
   };
 
+  const renderWorkbench = () => (
+    <WorkbenchView
+      onNavigateToTab={(tab) => setActiveTab(tab)}
+      onOpenAppCenter={() => openAppCenter()}
+      onSelectClient={(client) => openClient360(client, 'workbench')}
+      onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
+      currentAccount={currentAccount}
+      priorities={workbenchPriorities}
+      tools={availableTools}
+      quickToolIds={workbenchPreferences.quickToolIds}
+      sectionOrder={workbenchPreferences.sectionOrder}
+      onLaunchTool={handleLaunchTool}
+      onSectionOrderChange={handleSectionOrderChange}
+      onPromoteSchedule={handlePromoteSchedule}
+      onUnpinSchedule={handleUnpinSchedule}
+      onTaskStarted={handleTaskStarted}
+      onTaskCompleted={handleTaskCompleted}
+      onTaskReopened={handleTaskReopened}
+      autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
+      autoPromotionPaused={Boolean(taskUndo)}
+      taskSnapshot={activeTaskSnapshot}
+      onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
+      onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
+      onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
+      onRecommendationShown={(mode) => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_shown', status: 'viewed', trustLevel: 'verified_behavior', properties: { source: 'ai', method: mode } })}
+      onRecommendationAccepted={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_accepted', status: 'succeeded', trustLevel: 'verified_behavior', properties: { source: 'ai', method: 'manual' } })}
+    />
+  );
+
   return (
     <MobileFrame>
       {/* Toast Notification */}
       <AnimatePresence>
-        {toastMessage && (
+        {toast && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg border border-slate-700 backdrop-blur-md"
+            className="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex max-w-[calc(100vw-32px)] items-center gap-3 rounded-full border border-slate-700 bg-slate-900/90 px-4 py-2.5 text-xs font-semibold text-white shadow-lg backdrop-blur-md"
           >
-            {toastMessage}
+            <span className="truncate">{toast.message}</span>
+            {toast.actionLabel && toast.onAction && (
+              <button
+                type="button"
+                onClick={toast.onAction}
+                className="shrink-0 border-l border-white/20 pl-3 font-bold text-[#8fc3ff] cursor-pointer"
+              >
+                {toast.actionLabel}
+              </button>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -478,26 +657,7 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <WorkbenchView
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-                onOpenAppCenter={() => openAppCenter()}
-                onSelectClient={(client) => openClient360(client, 'workbench')}
-                onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
-                currentAccount={currentAccount}
-                priorities={workbenchPriorities}
-                tools={availableTools}
-                quickToolIds={workbenchPreferences.quickToolIds}
-                sectionOrder={workbenchPreferences.sectionOrder}
-                onLaunchTool={handleLaunchTool}
-                onSectionOrderChange={handleSectionOrderChange}
-                onPromoteSchedule={handlePromoteSchedule}
-                autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
-                onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
-                onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
-                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
-                onRecommendationShown={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_shown', status: 'viewed', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
-                onRecommendationAccepted={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_accepted', status: 'succeeded', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
-              />
+              {renderWorkbench()}
             </motion.div>
           ) : activeTab === 'clients' ? (
             <motion.div
@@ -579,26 +739,7 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15 }}
             >
-              <WorkbenchView
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-                onOpenAppCenter={() => openAppCenter()}
-                onSelectClient={(client) => openClient360(client, 'workbench')}
-                onOpenQuoteBuilder={(client) => openQuoteBuilder(client, 'workbench')}
-                currentAccount={currentAccount}
-                priorities={workbenchPriorities}
-                tools={availableTools}
-                quickToolIds={workbenchPreferences.quickToolIds}
-                sectionOrder={workbenchPreferences.sectionOrder}
-                onLaunchTool={handleLaunchTool}
-                onSectionOrderChange={handleSectionOrderChange}
-                onPromoteSchedule={handlePromoteSchedule}
-                autoPromoteEnabled={workbenchPreferences.autoPromoteEnabled}
-                onAutoPromoteEnabledChange={handleAutoPromoteEnabledChange}
-                onPriorityOpened={(isTransferred) => recordAnalytics(currentAccount, { module: 'workbench', action: isTransferred ? 'transferred_priority_opened' : 'priority_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'priority' } })}
-                onScheduleOpened={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'schedule_opened', status: 'viewed', trustLevel: 'verified_behavior', properties: { stage: 'schedule' } })}
-                onRecommendationShown={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_shown', status: 'viewed', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
-                onRecommendationAccepted={() => recordAnalytics(currentAccount, { module: 'workbench', action: 'recommendation_accepted', status: 'succeeded', trustLevel: 'verified_behavior', properties: { method: 'ai' } })}
-              />
+              {renderWorkbench()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -682,6 +823,7 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onResetWorkbenchDemo={resetWorkbenchDemo}
       />
 
       <DetailListModal

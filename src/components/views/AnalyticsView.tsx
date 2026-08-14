@@ -181,17 +181,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
     const genericPrior = getGenericFunnel(inPrior);
     const effective = getEffectiveWorkSessions(inCurrent);
     const recommendationShown = calculateOrderedFunnel(inCurrent, [
-      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' },
+      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' && (event.properties?.method === 'manual' || event.properties?.method === 'ai') },
       { id: 'accepted', matches: (event) => event.action === 'recommendation_accepted' },
     ]);
     const automatic = calculateOrderedFunnel(inCurrent, [
-      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' },
-      { id: 'automatic', matches: (event) => event.action === 'priority_transferred' && event.properties?.method === 'automatic' },
+      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' && event.properties?.method === 'automatic' },
+      { id: 'automatic', matches: (event) => (event.action === 'priority_promoted' || event.action === 'priority_transferred') && event.properties?.method === 'automatic' },
     ]);
     const transferOpened = calculateOrderedFunnel(inCurrent, [
       { id: 'shown', matches: (event) => event.action === 'recommendation_shown' },
-      { id: 'transferred', matches: (event) => event.action === 'priority_transferred' },
+      { id: 'promoted', matches: (event) => event.action === 'priority_promoted' || event.action === 'priority_transferred' },
       { id: 'opened', matches: (event) => event.action === 'transferred_priority_opened' },
+      { id: 'completed', matches: (event) => event.action === 'task_completed' && event.properties?.stage === 'priority' },
     ]);
     const selectedJourney = roleFilter !== 'all' && roleFilter !== 'product_operations' ? roleJourney(inCurrent, roleFilter) : null;
     const features = featureDefinitions.map((feature) => {
@@ -255,7 +256,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
     const previousLabSupportRate = percent(previousLab.counts[2], previousLab.counts[1]);
     const manualAdoption = percent(recommendationShown.counts[1], recommendationShown.counts[0]);
     const priorRecommendation = calculateOrderedFunnel(inPrior, [
-      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' },
+      { id: 'shown', matches: (event) => event.action === 'recommendation_shown' && (event.properties?.method === 'manual' || event.properties?.method === 'ai') },
       { id: 'accepted', matches: (event) => event.action === 'recommendation_accepted' },
     ]);
     const previousManualAdoption = percent(priorRecommendation.counts[1], priorRecommendation.counts[0]);
@@ -416,7 +417,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ revision, onPeriod
 
         <section className="crm-card overflow-hidden"><div className="px-4 pb-3 pt-4"><div className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[#1a6fd4]" /><h3 className="text-sm font-extrabold text-slate-900">应用Lab 共创</h3></div><p className="mt-0.5 text-[10px] leading-relaxed text-slate-400">支持表示实验价值信号；审核发起仅代表提交意图，不代表代码已通过。</p></div><div className="grid grid-cols-3 border-y border-[#edf3f9]">{['进入应用Lab', '查看工具', '支持工具'].map((label, index) => <div key={label} className="min-w-0 px-2 py-3 text-center"><strong className="block text-[17px] text-slate-900">{dashboard.lab.counts[index]}</strong><span className="mt-1 block text-[9px] leading-tight text-[#5a6a88]">{label}</span>{index > 0 && <span className="mt-1 block text-[8px] text-slate-400">{formatPercent(dashboard.lab.counts[index], dashboard.lab.counts[index - 1])}</span>}</div>)}</div><div className="flex items-center justify-between px-4 py-3"><span className="text-[10px] text-[#5a6a88]">教程查看 → 发起代码审核</span><strong className="text-[11px] text-[#1a2438]">{dashboard.labLearning.counts[0]} → {dashboard.labLearning.counts[1]} <span className="font-normal text-[#8a9ab8]">· {formatPercent(dashboard.labLearning.counts[1], dashboard.labLearning.counts[0])}</span></strong></div></section>
 
-        <section className="crm-card p-4"><div className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[#1a6fd4]" /><h3 className="text-sm font-extrabold text-slate-900">智能推荐状态阶梯</h3></div><div className="mt-3 grid grid-cols-4 gap-1.5 text-center"><div><strong className="text-[17px] text-slate-900">{dashboard.recommendationShown.counts[0]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">推荐展示</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.recommendationShown.counts[1]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">手工接受</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.automatic.counts[1]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">自动执行</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[2]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">转入后打开</span></div></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">手工采纳与自动执行永远分开统计；自动执行不是主动采纳。</p></section>
+        <section className="crm-card p-4"><div className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[#1a6fd4]" /><h3 className="text-sm font-extrabold text-slate-900">智能置顶闭环</h3></div><div className="mt-3 grid grid-cols-4 gap-1.5 text-center"><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[0]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">推荐展示</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[1]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">事项置顶</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[2]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">打开处理</span></div><div><strong className="text-[17px] text-slate-900">{dashboard.transferOpened.counts[3]}</strong><span className="mt-1 block text-[9px] text-[#5a6a88]">确认已处理</span></div></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">手工采纳 {dashboard.recommendationShown.counts[1]} 次 · 自动执行 {dashboard.automatic.counts[1]} 次；“已处理”仅代表用户确认行为。</p></section>
 
         <section className="grid grid-cols-3 gap-2"><article className="crm-card p-3"><SlidersHorizontal className="h-3.5 w-3.5 text-[#1a6fd4]" /><strong className="mt-3 block text-[18px] text-slate-900">{formatPercent(dashboard.personalization.configured, dashboard.validSessionCount)}</strong><p className="mt-1 text-[9px] text-[#5a6a88]">工作必备配置率</p></article><article className="crm-card p-3"><SlidersHorizontal className="h-3.5 w-3.5 text-[#1a6fd4]" /><strong className="mt-3 block text-[18px] text-slate-900">{formatPercent(dashboard.layoutReorderedSessions, dashboard.validSessionCount)}</strong><p className="mt-1 text-[9px] text-[#5a6a88]">面板排序率</p></article><article className="crm-card p-3"><SlidersHorizontal className="h-3.5 w-3.5 text-[#1a6fd4]" /><strong className="mt-3 block text-[18px] text-slate-900">{formatPercent(dashboard.personalization.reused, dashboard.personalization.configured)}</strong><p className="mt-1 text-[9px] text-[#5a6a88]">配置后复用率</p></article></section>
 

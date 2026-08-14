@@ -66,6 +66,29 @@ export interface WorkbenchScheduleItem {
   clientId?: string;
 }
 
+export type WorkbenchTaskStatus = 'pending' | 'in_progress' | 'completed';
+export type WorkbenchTaskKind = 'priority' | 'schedule';
+
+export interface WorkbenchTaskReference {
+  kind: WorkbenchTaskKind;
+  id: string;
+}
+
+export interface WorkbenchTaskState {
+  status: WorkbenchTaskStatus;
+  focused: boolean;
+  focusSource?: 'ai' | 'manual';
+  focusMethod?: 'manual' | 'automatic';
+}
+
+export interface WorkbenchTaskSnapshot {
+  schemaVersion: 1;
+  accountId: string;
+  dateKey: string;
+  tasks: Record<string, WorkbenchTaskState>;
+  suppressedScheduleIds: string[];
+}
+
 export interface WorkbenchInsight {
   eyebrow: string;
   title: string;
@@ -301,6 +324,11 @@ export type AnalyticsAction =
   | 'recommendation_accepted'
   | 'auto_transfer_toggled'
   | 'priority_transferred'
+  | 'priority_promoted'
+  | 'priority_unpinned'
+  | 'task_started'
+  | 'task_completed'
+  | 'task_reopened'
   | 'transferred_priority_opened'
   | 'layout_reordered'
   | 'tool_launched'
@@ -391,6 +419,7 @@ export interface ProductAnalyticsEvent {
     stage?: 'priority' | 'schedule';
     configurationAction?: 'add' | 'remove' | 'reorder';
     toolType?: 'quote_card' | 'tool' | 'lab_tool';
+    toggleState?: 'enabled' | 'disabled';
   };
 }
 

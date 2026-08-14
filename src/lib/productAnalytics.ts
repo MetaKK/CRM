@@ -24,6 +24,7 @@ const modules: AnalyticsModule[] = ['app', 'workbench', 'work_essential', 'app_c
 const actions: AnalyticsAction[] = [
   'app_opened', 'page_viewed', 'role_switched', 'quick_action_started', 'priority_opened', 'schedule_opened',
   'recommendation_shown', 'recommendation_accepted', 'auto_transfer_toggled', 'priority_transferred',
+  'priority_promoted', 'priority_unpinned', 'task_started', 'task_completed', 'task_reopened',
   'transferred_priority_opened', 'layout_reordered', 'tool_launched', 'tool_configured', 'tool_detail_viewed',
   'app_center_opened', 'lab_opened', 'lab_tool_viewed', 'lab_tool_supported', 'lab_tool_launched', 'lab_tutorial_opened', 'lab_submission_started',
   'client_opened', 'client_created', 'client_search_started', 'client_filter_changed',
@@ -67,12 +68,13 @@ const isSafeProperties = (value: unknown): value is ProductAnalyticsEvent['prope
   if (value === undefined) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const props = value as Record<string, unknown>;
-  if (Object.keys(props).some((key) => !['source', 'target', 'method', 'stage', 'configurationAction', 'toolType'].includes(key))) return false;
+  if (Object.keys(props).some((key) => !['source', 'target', 'method', 'stage', 'configurationAction', 'toolType', 'toggleState'].includes(key))) return false;
   if (props.source !== undefined && !includes(propertyValues, props.source)) return false;
   if (props.target !== undefined && !includes(propertyValues, props.target)) return false;
   if (props.method !== undefined && !['ai', 'manual', 'automatic'].includes(String(props.method))) return false;
   if (props.stage !== undefined && !['priority', 'schedule'].includes(String(props.stage))) return false;
   if (props.configurationAction !== undefined && !['add', 'remove', 'reorder'].includes(String(props.configurationAction))) return false;
+  if (props.toggleState !== undefined && !['enabled', 'disabled'].includes(String(props.toggleState))) return false;
   return props.toolType === undefined || ['quote_card', 'tool', 'lab_tool'].includes(String(props.toolType));
 };
 
@@ -197,13 +199,17 @@ export const getDemoAnalyticsEvents = (): ProductAnalyticsEvent[] => {
       if (session === 0 || (daysAgo % 4 === 0 && session === 3)) add(daysAgo, session, 49, 'work_essential', 'tool_configured', 'succeeded', 'verified_behavior', { configurationAction: 'add', toolType: 'tool' });
       if (session % 3 === 0) add(daysAgo, session, 57, 'work_essential', 'tool_launched', 'started', 'process_proxy', { toolType: 'tool' });
       if (session === 1 || (daysAgo % 3 === 0 && session === 4)) {
-        add(daysAgo, session, 61, 'workbench', 'recommendation_shown', 'viewed', 'verified_behavior', { method: 'ai' });
+        const recommendationMethod = daysAgo % 2 === 0 ? 'manual' : 'automatic';
+        add(daysAgo, session, 61, 'workbench', 'recommendation_shown', 'viewed', 'verified_behavior', { source: 'ai', method: recommendationMethod });
         if (daysAgo % 2 === 0) {
-          add(daysAgo, session, 65, 'workbench', 'recommendation_accepted', 'succeeded', 'verified_behavior', { method: 'ai' });
-          add(daysAgo, session, 66, 'workbench', 'priority_transferred', 'succeeded', 'verified_behavior', { method: 'manual' });
+          add(daysAgo, session, 65, 'workbench', 'recommendation_accepted', 'succeeded', 'verified_behavior', { source: 'ai', method: 'manual' });
+          add(daysAgo, session, 66, 'workbench', 'priority_promoted', 'succeeded', 'verified_behavior', { source: 'ai', method: 'manual' });
         } else {
-          add(daysAgo, session, 65, 'workbench', 'priority_transferred', 'succeeded', 'verified_behavior', { method: 'automatic' });
+          add(daysAgo, session, 65, 'workbench', 'priority_promoted', 'succeeded', 'verified_behavior', { source: 'ai', method: 'automatic' });
         }
+        add(daysAgo, session, 68, 'workbench', 'transferred_priority_opened', 'viewed', 'verified_behavior', { stage: 'priority' });
+        add(daysAgo, session, 69, 'workbench', 'task_started', 'started', 'verified_behavior', { stage: 'priority' });
+        if ((daysAgo + session) % 3 !== 0) add(daysAgo, session, 71, 'workbench', 'task_completed', 'succeeded', 'verified_behavior', { stage: 'priority' });
       }
       if (session % 4 === 0) add(daysAgo, session, 70, 'workbench', 'layout_reordered', 'succeeded', 'verified_behavior', { configurationAction: 'reorder' });
       if (session % 3 === 1) add(daysAgo, session, 76, 'xiaowan', 'quick_prompt_sent', 'started', 'process_proxy');
